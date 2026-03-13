@@ -131,30 +131,52 @@ function App(): JSX.Element {
           
           if (usersRes.ok) {
             const usersData: JellyfinUser[] = await usersRes.json()
-            setUsers(usersData || [])
-            setPendingConfig({ url, apiKey })
-            setShowUserSelector(true)
-            setIsConnecting(false)
-            return false // Don't set isConnected yet, wait for user selection
+            if (usersData.length === 1) {
+              // Only one user - use it directly
+              const singleUserId = usersData[0].Id
+              setJellyfinConfig({ url, apiKey, userId: singleUserId })
+              setUserId(singleUserId)
+              setIsConnected(true)
+              await loadLibrary(url, apiKey, singleUserId)
+              return true
+            } else if (usersData.length > 1) {
+              // Multiple users - show selector
+              setUsers(usersData)
+              setPendingConfig({ url, apiKey })
+              setShowUserSelector(true)
+              setIsConnecting(false)
+              return false
+            }
           }
         } else {
-          console.warn('/Users/Me failed, using default user ID:', currentUserId)
+          // Show user selector as fallback
+          console.warn('/Users/Me failed, showing user selector')
+          try {
+            const usersRes = await fetch(`${normalizedUrl}/Users`, {
+              headers: { 'X-MediaBrowser-Token': apiKey }
+            })
+            if (usersRes.ok) {
+              const usersData: JellyfinUser[] = await usersRes.json()
+              if (usersData.length > 0) {
+                setUsers(usersData)
+                setPendingConfig({ url, apiKey })
+                setShowUserSelector(true)
+                setIsConnecting(false)
+                return false
+              }
+            }
+          } catch (e) {
+            console.error('Failed to fetch users:', e)
+          }
         }
       } catch (e) {
-        console.warn('User ID fetch failed, using default:', currentUserId)
+        console.warn('User ID fetch failed:', e)
+        // Show user selector as last resort
+        setError('No se pudo identificar el usuario. Selecciona uno manualmente.')
       }
       
-      console.log('Using user ID:', currentUserId)
-      
-      // Save config with user ID (may be empty)
-      setJellyfinConfig({ url, apiKey, userId: currentUserId })
-      setUserId(currentUserId)
-      setIsConnected(true)
-      
-      // Load library data
-      await loadLibrary(url, apiKey, currentUserId)
-      
-      return true
+      setIsConnecting(false)
+      return false
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Connection failed'
       setError(errorMessage)
