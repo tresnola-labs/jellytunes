@@ -26,3 +26,13 @@ pnpm test:bdd:ci
 # Ver reporte HTML
 pnpm test:bdd:report
 ```
+
+## Configuración ignored
+
+```
+node_modules/
+dist/
+release/
+*.log
+test-*
+```

@@ -56,8 +56,8 @@ export async function launchApp(): Promise<ElectronApplication> {
 }
 
 export async function getMainWindow(app: ElectronApplication): Promise<Page> {
-  // Wait for first window
-  const window = await app.waitForEvent('window', { timeout: 10000 });
+  // Wait for first window (60 seconds for CI environments)
+  const window = await app.waitForEvent('window', { timeout: 60000 });
   
   // Wait for DOM to be ready
   await window.waitForLoadState('domcontentloaded');

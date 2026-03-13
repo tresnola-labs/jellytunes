@@ -22,6 +22,8 @@ const config = {
   
   // Perfil para CI (modo headless)
   ci: {
+    paths: ['tests/bdd/features/**/*.feature'],
+    require: ['tests/bdd/dist/steps/**/*.js', 'tests/bdd/dist/support/**/*.js'],
     format: ['json:./tests/bdd/reports/cucumber-report.json'],
     worldParameters: {
       headless: true,
