@@ -1,10 +1,13 @@
 name: BDD Tests
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 3 * * *'  # nightly 3am
+  workflow_dispatch:      # manual
+  release:
+    types: [published]
 
 jobs:
   bdd-tests:
@@ -17,18 +20,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'pnpm'
+      
+      - name: Install pnpm
+        run: npm install -g pnpm
       
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
       
       - name: Build app
         run: pnpm build
       
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      
       - name: Run BDD tests with XVFB
-        uses: coactions/setup-xvfb@v1
-        with:
-          run: pnpm test:bdd
+        run: xvfb-run --auto-servernum pnpm test:bdd:ci
           
       - name: Upload test results
         if: always()
@@ -38,3 +45,4 @@ jobs:
           path: |
             tests/bdd/reports/
             tests/bdd/screenshots/
+          retention-days: 30
