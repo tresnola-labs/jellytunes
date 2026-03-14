@@ -1175,6 +1175,15 @@ function App(): JSX.Element {
             </div>
           )}
 
+          {/* Error Display */}
+          {error && (
+            <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-700 rounded-lg flex items-center gap-2 text-red-300">
+              <X className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm">{error}</span>
+              <button onClick={() => setError(null)} className="ml-auto text-xs hover:text-red-200">Dismiss</button>
+            </div>
+          )}
+
           {/* Content Grid */}
           {activeSection === 'library' && (
             <div data-testid="library-content" className="grid gap-4">
@@ -1258,13 +1267,13 @@ function App(): JSX.Element {
                     Loading more...
                   </div>
                 )}
-                {!isLoadingMore && activeLibrary === 'artists' && pagination.artists.hasMore && (
+                {!isLoadingMore && activeLibrary === 'artists' && pagination.artists.hasMore && pagination.artists.items.length > 0 && (
                   <div className="text-center text-zinc-600 text-xs py-2">Scroll for more</div>
                 )}
-                {!isLoadingMore && activeLibrary === 'albums' && pagination.albums.hasMore && (
+                {!isLoadingMore && activeLibrary === 'albums' && pagination.albums.hasMore && pagination.albums.items.length > 0 && (
                   <div className="text-center text-zinc-600 text-xs py-2">Scroll for more</div>
                 )}
-                {!isLoadingMore && activeLibrary === 'playlists' && pagination.playlists.hasMore && (
+                {!isLoadingMore && activeLibrary === 'playlists' && pagination.playlists.hasMore && pagination.playlists.items.length > 0 && (
                   <div className="text-center text-zinc-600 text-xs py-2">Scroll for more</div>
                 )}
               </div>
