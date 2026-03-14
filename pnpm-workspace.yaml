@@ -1,1 +1,8 @@
-onlyBuiltDependencies: '["better-sqlite3","electron","esbuild","usb"]'
+packages:
+  - '.'
+
+onlyBuiltDependencies:
+  - better-sqlite3
+  - electron
+  - esbuild
+  - usb
