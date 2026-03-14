@@ -108,6 +108,8 @@ function App(): JSX.Element {
   const [users, setUsers] = useState<JellyfinUser[]>([])
   const [showUserSelector, setShowUserSelector] = useState(false)
   const [pendingConfig, setPendingConfig] = useState<{url: string, apiKey: string} | null>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [apiKeyInput, setApiKeyInput] = useState('')
   
   // Library statistics (from /Users/{userId}/Items/Counts)
   const [stats, setStats] = useState<LibraryStats | null>(null)
@@ -118,6 +120,33 @@ function App(): JSX.Element {
     albums: { items: [], total: 0, startIndex: 0, hasMore: true, scrollPos: 0 },
     playlists: { items: [], total: 0, startIndex: 0, hasMore: true, scrollPos: 0 }
   })
+  
+  // Load saved config on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jellysync-config')
+      if (saved) {
+        const { url, apiKey } = JSON.parse(saved)
+        if (url && apiKey) {
+          setPendingConfig({ url, apiKey })
+          setUrlInput(url)
+          setApiKeyInput(apiKey)
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }, [])
+  
+  // Save config when connected
+  useEffect(() => {
+    if (jellyfinConfig?.url && jellyfinConfig?.apiKey) {
+      try {
+        localStorage.setItem('jellysync-config', JSON.stringify({
+          url: jellyfinConfig.url,
+          apiKey: jellyfinConfig.apiKey
+        }))
+      } catch (e) { /* ignore */ }
+    }
+  }, [jellyfinConfig])
   
   // Track which tab data is currently loaded in main state
   const [loadedTabs, setLoadedTabs] = useState<Set<'artists' | 'albums' | 'playlists'>>(new Set(['artists']))
@@ -860,6 +889,8 @@ function App(): JSX.Element {
                     data-testid="server-url-input"
                     name="url"
                     type="url"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
                     placeholder="https://jellyfin.tudominio.com"
                     required
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
@@ -871,6 +902,8 @@ function App(): JSX.Element {
                     data-testid="api-key-input"
                     name="apiKey"
                     type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
                     placeholder="Your Jellyfin API key"
                     required
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
