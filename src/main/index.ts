@@ -175,13 +175,37 @@ async function convertTrackToMp3(inputPath: string, outputPath: string, bitrate:
 
 let isSyncCancelled = false
 
-async function syncTracks(options: { tracks: Array<{ id: string; name: string; path: string; size: number; format: string }>; targetPath: string; convertToMp3: boolean; mp3Bitrate: string; onProgress: (progress: { current: number; total: number; currentFile: string; status: string }) => void }): Promise<{ success: boolean; errors: string[]; syncedFiles: number }> {
-  const { tracks, targetPath, convertToMp3, mp3Bitrate, onProgress } = options
+// Helper to download file from Jellyfin server
+async function downloadFromJellyfin(trackId: string, outputPath: string, serverUrl: string, apiKey: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${serverUrl}/Items/${trackId}/Download`, {
+      headers: {
+        'X-MediaBrowser-Token': apiKey,
+        'X-Emby-Token': apiKey
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status} ${response.statusText}`)
+    }
+    
+    const buffer = await response.arrayBuffer()
+    fs.writeFileSync(outputPath, Buffer.from(buffer))
+    return true
+  } catch (error) {
+    console.error('Download error:', error)
+    return false
+  }
+}
+
+async function syncTracks(options: { tracks: Array<{ id: string; name: string; path: string; size: number; format: string }>; targetPath: string; convertToMp3: boolean; mp3Bitrate: string; serverUrl?: string; apiKey?: string; onProgress: (progress: { current: number; total: number; currentFile: string; status: string }) => void }): Promise<{ success: boolean; errors: string[]; syncedFiles: number }> {
+  const { tracks, targetPath, convertToMp3, mp3Bitrate, serverUrl, apiKey, onProgress } = options
   const errors: string[] = []
   let syncedFiles = 0
   isSyncCancelled = false
   if (!fs.existsSync(targetPath)) { fs.mkdirSync(targetPath, { recursive: true }) }
   const total = tracks.length
+  
   for (let i = 0; i < tracks.length; i++) {
     if (isSyncCancelled) break
     const track = tracks[i]
@@ -189,15 +213,28 @@ async function syncTracks(options: { tracks: Array<{ id: string; name: string; p
     try {
       let outputFileName: string
       let outputPathFull: string
-      if (convertToMp3 && track.format === 'flac') {
-        outputFileName = path.basename(track.path, path.extname(track.path)) + '.mp3'
+      
+      // Use Jellyfin download endpoint if serverUrl is provided
+      if (serverUrl && apiKey) {
+        outputFileName = `${track.name}.${track.format}`
         outputPathFull = join(targetPath, outputFileName)
-        const tempPath = join(app.getPath('temp'), `jellysync_${Date.now()}_${path.basename(track.path)}`)
-        fs.copyFileSync(track.path, tempPath)
-        const converted = await convertTrackToMp3(tempPath, outputPathFull, mp3Bitrate)
-        try { fs.unlinkSync(tempPath) } catch (e) { /* ignore */ }
-        if (!Boolean(converted)) { errors.push(`Failed to convert: ${track.name}`); continue }
+        
+        if (fs.existsSync(outputPathFull)) {
+          const existingStats = fs.statSync(outputPathFull)
+          if (existingStats.size === track.size) {
+            syncedFiles++
+            continue
+          }
+        }
+        
+        // Download from Jellyfin server
+        const downloaded = await downloadFromJellyfin(track.id, outputPathFull, serverUrl, apiKey)
+        if (!downloaded) {
+          errors.push(`Failed to download: ${track.name}`)
+          continue
+        }
       } else {
+        // Fallback to local copy (for testing)
         outputFileName = path.basename(track.path)
         outputPathFull = join(targetPath, outputFileName)
         if (fs.existsSync(outputPathFull)) {
@@ -207,10 +244,11 @@ async function syncTracks(options: { tracks: Array<{ id: string; name: string; p
         }
         fs.copyFileSync(track.path, outputPathFull)
       }
+      
       syncedFiles++
       log.info(`Synced: ${track.name}`)
     } catch (error) {
-      const errorMsg = `Error syncing ${track.name}: ${error instanceof Error ? error.message : String(error)}`
+      const errorMsg = `Failed to sync "${track.name}": ${error instanceof Error ? error.message : String(error)}`
       log.error(errorMsg)
       errors.push(errorMsg)
     }
@@ -243,59 +281,108 @@ ipcMain.handle('sync:start', async (event, options) => {
   try {
     log.info(`Starting sync to ${options.targetPath} with ${options.tracks.length} tracks`)
     const result = await syncTracks({
-      tracks: options.tracks, targetPath: options.targetPath, convertToMp3: options.convertToMp3, mp3Bitrate: options.mp3Bitrate,
+      tracks: options.tracks, 
+      targetPath: options.targetPath, 
+      convertToMp3: options.convertToMp3, 
+      mp3Bitrate: options.mp3Bitrate,
+      serverUrl: options.serverUrl,
+      apiKey: options.apiKey,
       onProgress: (progress) => { mainWindow?.webContents.send('sync:progress', progress) }
     })
     return result
   } catch (error) { log.error('Sync error:', error); return { success: false, errors: [error instanceof Error ? error.message : String(error)], syncedFiles: 0 } }
 })
 
-// New sync:start2 handler using the new sync module
+// New sync:start2 handler - downloads from Jellyfin server
 ipcMain.handle('sync:start2', async (event, options) => {
   try {
-    const { serverUrl, apiKey, userId, itemIds, itemTypes, destinationPath, options: syncOptions } = options
+    const { serverUrl, apiKey, userId, itemIds, itemTypes, destinationPath } = options
     log.info(`Starting sync v2 to ${destinationPath} with ${itemIds.length} items`)
     
-// Validate config
-    const configValidation = createValidatedConfig({ serverUrl, apiKey, userId })
-    if (!configValidation.success) {
-      return { success: false, errors: configValidation.errors, tracksCopied: 0 }
+    // Validate inputs
+    if (!serverUrl || !apiKey || !userId) {
+      return { success: false, errors: ['Missing serverUrl, apiKey, or userId'], tracksCopied: 0 }
     }
     
-    // Validate destination
-    const destValidation = await validateDestination(destinationPath, createNodeFileSystem())
-    if (!destValidation.valid) {
-      return { success: false, errors: destValidation.errors, tracksCopied: 0 }
+    // Create destination folder if needed
+    if (!fs.existsSync(destinationPath)) {
+      fs.mkdirSync(destinationPath, { recursive: true })
     }
     
-    // Create sync core with dependencies
-    const syncCore = createSyncCore(configValidation.config!)
-    
-    // Convert itemTypes from object to Map if needed
-    const itemTypesMap = itemTypes instanceof Map ? itemTypes : new Map(Object.entries(itemTypes))
-    
-    // Run sync
-    const result = await syncCore.sync({
-      itemIds,
-      itemTypes: itemTypesMap,
-      destinationPath,
-      options: syncOptions
-    }, (progress) => {
-      mainWindow?.webContents.send('sync:progress', {
-        current: progress.current,
-        total: progress.total,
-        currentFile: progress.currentTrack || '',
-        status: progress.phase
-      })
+    // Create API client to fetch tracks
+    const { createApiClient } = await import('../sync/sync-api.js')
+    const api = createApiClient({
+      baseUrl: serverUrl.replace(/\/$/, ''),
+      apiKey,
+      userId,
+      timeout: 60000
     })
     
-    log.info(`Sync v2 completed: ${result.tracksCopied} tracks, ${result.errors.length} errors`)
+    // Get tracks for items
+    const itemTypesMap = itemTypes instanceof Map ? itemTypes : new Map(Object.entries(itemTypes))
+    const { tracks, errors: fetchErrors } = await api.getTracksForItems(itemIds, itemTypesMap)
+    
+    log.info(`Fetched ${tracks.length} tracks, ${fetchErrors.length} errors`)
+    
+    if (tracks.length === 0) {
+      return { success: false, errors: fetchErrors.length > 0 ? fetchErrors : ['No tracks found'], tracksCopied: 0 }
+    }
+    
+    // Download each track
+    let tracksCopied = 0
+    const syncErrors: string[] = []
+    const total = tracks.length
+    
+    for (let i = 0; i < tracks.length; i++) {
+      const track = tracks[i]
+      mainWindow?.webContents.send('sync:progress', {
+        current: i + 1,
+        total,
+        currentFile: track.name,
+        status: 'syncing'
+      })
+      
+      try {
+        const outputFileName = `${track.name}.${track.format}`
+        const outputPathFull = join(destinationPath, outputFileName)
+        
+        // Check if already exists with same size
+        if (fs.existsSync(outputPathFull)) {
+          const existingStats = fs.statSync(outputPathFull)
+          if (existingStats.size === track.size) {
+            tracksCopied++
+            continue
+          }
+        }
+        
+        // Download from Jellyfin
+        const downloaded = await downloadFromJellyfin(track.id, outputPathFull, serverUrl.replace(/\/$/, ''), apiKey)
+        
+        if (downloaded) {
+          tracksCopied++
+          log.info(`Synced: ${track.name}`)
+        } else {
+          syncErrors.push(`Failed to download: ${track.name}`)
+        }
+      } catch (err) {
+        syncErrors.push(`Error syncing "${track.name}": ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    
+    mainWindow?.webContents.send('sync:progress', {
+      current: total,
+      total,
+      currentFile: '',
+      status: 'complete'
+    })
+    
+    log.info(`Sync v2 completed: ${tracksCopied} tracks, ${syncErrors.length} errors`)
     return {
-      success: result.success,
-      tracksCopied: result.tracksCopied,
-      tracksFailed: result.tracksFailed,
-      errors: result.errors,
-      totalSizeBytes: result.totalSizeBytes
+      success: syncErrors.length === 0,
+      tracksCopied,
+      tracksFailed: syncErrors.map(e => e.split(':')[0]),
+      errors: syncErrors,
+      totalSizeBytes: tracks.reduce((sum, t) => sum + (t.size || 0), 0)
     }
   } catch (error) { 
     log.error('Sync v2 error:', error); 
