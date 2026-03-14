@@ -95,7 +95,9 @@ function App(): JSX.Element {
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [devices, setDevices] = useState<UsbDevice[]>([])
-  const [activeSection, setActiveSection] = useState<'library' | 'devices'>('library')
+  const [activeSection, setActiveSection] = useState<'library' | 'sync' | 'devices'>('library')
+  const [syncFolder, setSyncFolder] = useState<string | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [activeLibrary, setActiveLibrary] = useState<'artists' | 'albums' | 'playlists'>('artists')
   const [artists, setArtists] = useState<Artist[]>([])
   const [albums, setAlbums] = useState<Album[]>([])
@@ -446,6 +448,29 @@ function App(): JSX.Element {
     setActiveLibrary(newTab)
   }
 
+  // Handle folder selection for sync
+  const handleSelectSyncFolder = async (): Promise<void> => {
+    const folder = await window.api.selectFolder()
+    if (folder) {
+      setSyncFolder(folder)
+    }
+  }
+
+  // Handle sync start
+  const handleStartSync = async (): Promise<void> => {
+    if (!syncFolder) {
+      alert('Please select a sync destination folder first')
+      return
+    }
+    setIsSyncing(true)
+    
+    // TODO: Implement actual sync logic - for now just show a message
+    setTimeout(() => {
+      setIsSyncing(false)
+      alert(`Sync to ${syncFolder} would start here!\n\nThis feature is coming soon.`)
+    }, 1500)
+  }
+
   // Load initial library data (precarga todas las secciones para el sidebar)
   const loadLibrary = async (url: string, apiKey: string, userId: string): Promise<void> => {
     const headers = { 
@@ -570,7 +595,7 @@ function App(): JSX.Element {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       
       const data = await res.json()
-      const newItems = data.Items || []
+      const newItems: Array<Artist | Album | Playlist> = data.Items || []
       
       console.log(`Loaded more ${type}: ${newItems.length} items (startIndex: ${startIndex})`)
       
@@ -917,6 +942,25 @@ function App(): JSX.Element {
             </nav>
           </div>
 
+          {/* Sync Section */}
+          <div className="mb-6">
+            <h3 className="text-xs font-medium text-zinc-500 uppercase mb-2">Sync</h3>
+            <nav className="space-y-1">
+              <button
+                data-testid="tab-sync"
+                onClick={() => setActiveSection('sync')}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                  activeSection === 'sync'
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-zinc-800'
+                }`}
+              >
+                <HardDrive className="w-4 h-4" />
+                Sync to Device
+              </button>
+            </nav>
+          </div>
+
           {/* Devices Section */}
           <div>
             <h3 className="text-xs font-medium text-zinc-500 uppercase mb-2">Devices</h3>
@@ -939,8 +983,8 @@ function App(): JSX.Element {
                       {device.productName || `USB ${device.deviceAddress}`}
                     </span>
                     <span className="ml-auto text-xs opacity-60">
-                      {device.vendorId.toString(16).padStart(4, '0')}:
-                      {device.productId.toString(16).padStart(4, '0')}
+                      {device.vendorId?.toString(16).padStart(4, '0')}:
+                      {device.productId?.toString(16).padStart(4, '0')}
                     </span>
                   </button>
                 ))
@@ -1044,6 +1088,59 @@ function App(): JSX.Element {
             </div>
           )}
 
+          {activeSection === 'sync' && (
+            <div className="p-8">
+              <h2 className="text-xl font-semibold mb-6">Sync to Device</h2>
+              
+              <div className="max-w-lg">
+                <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800 mb-6">
+                  <h3 className="font-medium mb-4">Select Destination</h3>
+                  
+                  {syncFolder ? (
+                    <div className="p-4 bg-zinc-800 rounded-lg mb-4">
+                      <p className="text-sm text-zinc-400 mb-1">Selected folder:</p>
+                      <p className="text-sm font-mono break-all">{syncFolder}</p>
+                      <button 
+                        onClick={handleSelectSyncFolder}
+                        className="mt-3 text-sm text-blue-500 hover:text-blue-400"
+                      >
+                        Change folder
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={handleSelectSyncFolder}
+                      className="w-full p-4 border-2 border-dashed border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors text-left"
+                    >
+                      <HardDrive className="w-8 h-8 text-zinc-500 mb-2" />
+                      <p className="text-zinc-400">Click to select a folder</p>
+                      <p className="text-xs text-zinc-500 mt-1">Choose where to sync your music</p>
+                    </button>
+                  )}
+                </div>
+
+                {syncFolder && (
+                  <button
+                    onClick={handleStartSync}
+                    disabled={isSyncing}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 py-3 rounded-lg font-medium transition-colors"
+                  >
+                    {isSyncing ? 'Syncing...' : 'Start Sync'}
+                  </button>
+                )}
+
+                <div className="mt-8 p-4 bg-zinc-900 rounded-lg">
+                  <h4 className="font-medium mb-2">How it works:</h4>
+                  <ul className="text-sm text-zinc-400 space-y-1">
+                    <li>1. Select a folder (USB drive, external HDD, etc.)</li>
+                    <li>2. Click "Start Sync" to begin</li>
+                    <li>3. Music will be copied to your device</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeSection === 'devices' && (
             <div className="text-center text-zinc-500 py-20">
               {devices.length === 0 ? (
@@ -1068,8 +1165,8 @@ function App(): JSX.Element {
                       </div>
                       <div className="text-xs text-zinc-500 space-y-1">
                         <p>Address: {device.deviceAddress}</p>
-                        <p>VID: 0x{device.vendorId.toString(16).padStart(4, '0').toUpperCase()}</p>
-                        <p>PID: 0x{device.productId.toString(16).padStart(4, '0').toUpperCase()}</p>
+                        <p>VID: 0x{device.vendorId?.toString(16).padStart(4, '0').toUpperCase()}</p>
+                        <p>PID: 0x{device.productId?.toString(16).padStart(4, '0').toUpperCase()}</p>
                       </div>
                     </div>
                   ))}

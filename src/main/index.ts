@@ -170,8 +170,8 @@ function detectAudioFormat(filePath: string): string {
 
 import * as path from 'path'
 
-async function convertToMp3(inputPath: string, outputPath: string, bitrate: string): Promise<boolean> {
-  return new Promise((resolve) => {
+async function convertTrackToMp3(inputPath: string, outputPath: string, bitrate: string): Promise<boolean> {
+  return new Promise<boolean>((resolve: (value: boolean) => void) => {
     try {
       let ffmpegPath: string
       try {
@@ -207,9 +207,9 @@ async function syncTracks(options: { tracks: Array<{ id: string; name: string; p
         outputPathFull = join(targetPath, outputFileName)
         const tempPath = join(app.getPath('temp'), `jellysync_${Date.now()}_${path.basename(track.path)}`)
         fs.copyFileSync(track.path, tempPath)
-        const converted = await convertToMp3(tempPath, outputPathFull, mp3Bitrate)
+        const converted = await convertTrackToMp3(tempPath, outputPathFull, mp3Bitrate)
         try { fs.unlinkSync(tempPath) } catch (e) { /* ignore */ }
-        if (!converted) { errors.push(`Failed to convert: ${track.name}`); continue }
+        if (!Boolean(converted)) { errors.push(`Failed to convert: ${track.name}`); continue }
       } else {
         outputFileName = path.basename(track.path)
         outputPathFull = join(targetPath, outputFileName)
