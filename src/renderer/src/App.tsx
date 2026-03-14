@@ -157,11 +157,13 @@ function App(): JSX.Element {
             })
             if (usersRes.ok) {
               const usersData: JellyfinUser[] = await usersRes.json()
+              console.log('Users fetched:', usersData.length, usersData.map(u => u.Name))
               if (usersData.length > 0) {
                 setUsers(usersData)
                 setPendingConfig({ url, apiKey })
                 setShowUserSelector(true)
                 setIsConnecting(false)
+                console.log('Showing user selector')
                 return false
               }
             }
