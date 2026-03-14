@@ -432,6 +432,34 @@ function App(): JSX.Element {
   }
 
   // Handle tab change - save current scroll and load new tab
+  // Toggle track selection for sync
+  const toggleTrackSelection = (id: string): void => {
+    setSelectedTracks(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return newSet
+    })
+  }
+
+  // Select all in current view
+  const selectAllInView = (): void => {
+    const currentItems = activeLibrary === 'artists' ? artists : activeLibrary === 'albums' ? albums : playlists
+    setSelectedTracks(prev => {
+      const newSet = new Set(prev)
+      currentItems.forEach(item => newSet.add(item.Id))
+      return newSet
+    })
+  }
+
+  // Clear selection
+  const clearSelection = (): void => {
+    setSelectedTracks(new Set())
+  }
+
   const handleTabChange = (newTab: 'artists' | 'albums' | 'playlists'): void => {
     // Save current scroll position before switching
     if (contentScrollRef.current) {
@@ -462,13 +490,28 @@ function App(): JSX.Element {
       alert('Please select a sync destination folder first')
       return
     }
+    if (selectedTracks.size === 0) {
+      alert('Please select at least one item to sync')
+      return
+    }
+    
     setIsSyncing(true)
     
-    // TODO: Implement actual sync logic - for now just show a message
-    setTimeout(() => {
+    try {
+      // Get selected items details - for now we sync the item IDs
+      // In a full implementation, we'd fetch track details from Jellyfin
+      const selectedIds = Array.from(selectedTracks)
+      
+      // For demo: just show progress
+      // TODO: Fetch actual tracks from Jellyfin using the item IDs
+      alert(`Starting sync of ${selectedIds.length} items to ${syncFolder}...\n\nThis is a placeholder - full track fetching from Jellyfin coming soon.`)
+      
+    } catch (error) {
+      console.error('Sync error:', error)
+      alert('Sync failed: ' + error)
+    } finally {
       setIsSyncing(false)
-      alert(`Sync to ${syncFolder} would start here!\n\nThis feature is coming soon.`)
-    }, 1500)
+    }
   }
 
   // Load initial library data (precarga todas las secciones para el sidebar)
@@ -1010,6 +1053,31 @@ function App(): JSX.Element {
             )}
           </div>
 
+          {/* Selection Controls */}
+          {activeSection === 'library' && (
+            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+              <span className="text-sm text-zinc-400">
+                {selectedTracks.size} selected
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={selectAllInView}
+                  className="text-sm text-blue-500 hover:text-blue-400"
+                >
+                  Select All
+                </button>
+                {selectedTracks.size > 0 && (
+                  <button
+                    onClick={clearSelection}
+                    className="text-sm text-zinc-400 hover:text-zinc-300"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Content Grid */}
           {activeSection === 'library' && (
             <div data-testid="library-content" className="grid gap-4">
@@ -1017,6 +1085,12 @@ function App(): JSX.Element {
                 .filter(a => !searchQuery || a.Name.toLowerCase().includes(searchQuery.toLowerCase()))
                 .map((artist, idx) => (
                   <div key={artist.Id || `artist-${idx}`} className="flex items-center gap-4 p-4 bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedTracks.has(artist.Id)}
+                      onChange={() => toggleTrackSelection(artist.Id)}
+                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500"
+                    />
                     <div className="w-12 h-12 bg-zinc-800 rounded-lg flex items-center justify-center">
                       <User className="w-6 h-6 text-zinc-500" />
                     </div>
@@ -1035,6 +1109,12 @@ function App(): JSX.Element {
                 .filter(a => !searchQuery || a.Name.toLowerCase().includes(searchQuery.toLowerCase()))
                 .map((album, idx) => (
                   <div key={album.Id || `album-${idx}`} className="flex items-center gap-4 p-4 bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedTracks.has(album.Id)}
+                      onChange={() => toggleTrackSelection(album.Id)}
+                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500"
+                    />
                     <div className="w-12 h-12 bg-zinc-800 rounded-lg flex items-center justify-center">
                       <Disc className="w-6 h-6 text-zinc-500" />
                     </div>
@@ -1053,6 +1133,12 @@ function App(): JSX.Element {
                 .filter(p => !searchQuery || p.Name.toLowerCase().includes(searchQuery.toLowerCase()))
                 .map((playlist, idx) => (
                   <div key={playlist.Id || `playlist-${idx}`} className="flex items-center gap-4 p-4 bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedTracks.has(playlist.Id)}
+                      onChange={() => toggleTrackSelection(playlist.Id)}
+                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500"
+                    />
                     <div className="w-12 h-12 bg-zinc-800 rounded-lg flex items-center justify-center">
                       <ListMusic className="w-6 h-6 text-zinc-500" />
                     </div>
