@@ -75,6 +75,9 @@ export interface SyncApi {
   
   /** Get library statistics */
   getLibraryStats(): Promise<{ artists: number; albums: number; tracks: number }>;
+  
+  /** Download item from Jellyfin server */
+  downloadItem(itemId: string): Promise<Buffer>;
 }
 
 /**
@@ -302,6 +305,48 @@ class SyncApiImpl implements SyncApi {
     };
   }
 
+  async downloadItem(itemId: string): Promise<Buffer> {
+    const url = `${this.baseUrl}/Items/${itemId}/Download`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout * 10); // Longer timeout for downloads
+    
+    try {
+      const response = await this.fetchFn(url, {
+        method: 'GET',
+        headers: {
+          'X-MediaBrowser-Token': this.apiKey,
+          'X-Emby-Token': this.apiKey,
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new ApiError(
+          `Download failed: ${response.status} ${response.statusText}`,
+          response.status
+        );
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Download timed out');
+      }
+      
+      throw new Error(`Download failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   private async trackItemToInfo(item: JellyfinTrackItem): Promise<TrackInfo> {
     const source = item.MediaSources?.[0];
     
@@ -410,6 +455,7 @@ export function createMockApiClient(overrides?: Partial<SyncApi>): SyncApi {
     getTracksForItems: async () => ({ tracks: [], errors: [] }),
     getItem: async () => null,
     getLibraryStats: async () => ({ artists: 0, albums: 0, tracks: 0 }),
+    downloadItem: async () => Buffer.from(''),
   };
   
   return { ...defaultMock, ...overrides };

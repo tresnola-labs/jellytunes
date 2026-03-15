@@ -220,7 +220,10 @@ class SyncCoreImpl {
             await this.convertAndCopy(track, outputPath, options.bitrate ?? '192k');
             stats.itemsConverted++;
           } else {
-            await this.deps.fs.copyFile(track.path, outputPath);
+            // Download from Jellyfin server instead of local copy
+            // track.path is a server path that doesn't exist locally
+            const data = await this.deps.api.downloadItem(track.id);
+            await this.deps.fs.writeFile(outputPath, data);
             stats.bytesTransferred += track.size ?? 0;
           }
           
@@ -452,15 +455,21 @@ class SyncCoreImpl {
   }
   
   private async convertAndCopy(
-    track: { path: string; name: string },
+    track: { id: string; path: string; name: string },
     outputPath: string,
     bitrate: '128k' | '192k' | '320k'
   ): Promise<void> {
     const tempPath = `/tmp/jellysync_${Date.now()}_${track.name.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
     
     try {
+      // Download from Jellyfin server first
+      const data = await this.deps.api.downloadItem(track.id);
+      const sourcePath = `/tmp/jellysync_src_${Date.now()}.tmp`;
+      await this.deps.fs.writeFile(sourcePath, data);
+      
+      // Now convert the downloaded file
       const result = await this.deps.converter.convertToMp3(
-        track.path,
+        sourcePath,
         tempPath,
         bitrate
       );
@@ -471,7 +480,12 @@ class SyncCoreImpl {
       
       await this.deps.fs.copyFile(tempPath, outputPath);
       
-      // Clean up temp file
+      // Clean up temp files
+      try {
+        await this.deps.fs.unlink(sourcePath);
+      } catch {
+        // Ignore cleanup errors
+      }
       try {
         await this.deps.fs.unlink(tempPath);
       } catch {
