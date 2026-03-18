@@ -178,8 +178,10 @@ export function progress(total: number): ProgressBuilder {
 export interface ProgressStats {
   /** Time when sync started */
   startTime: number;
-  /** Number of items processed */
+  /** Number of items processed (copied/converted) */
   itemsProcessed: number;
+  /** Number of items skipped (already up-to-date) */
+  itemsSkipped: number;
   /** Number of items failed */
   itemsFailed: number;
   /** Total bytes transferred */
@@ -195,6 +197,7 @@ export function createProgressStats(): ProgressStats {
   return {
     startTime: 0,
     itemsProcessed: 0,
+    itemsSkipped: 0,
     itemsFailed: 0,
     bytesTransferred: 0,
     itemsConverted: 0,

@@ -64,7 +64,7 @@ interface Api {
       convertToMp3?: boolean;
       bitrate?: '128k' | '192k' | '320k';
     };
-  }) => Promise<{ success: boolean; tracksCopied: number; tracksFailed: string[]; errors: string[]; totalSizeBytes?: number }>
+  }) => Promise<{ success: boolean; tracksCopied: number; tracksSkipped: number; tracksFailed: string[]; errors: string[]; totalSizeBytes?: number }>
   cancelSync: () => Promise<{ cancelled: boolean }>
   onSyncProgress: (callback: (progress: SyncProgress) => void) => (() => void) | undefined
   isFfmpegAvailable: () => Promise<boolean>

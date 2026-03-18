@@ -143,6 +143,8 @@ export interface SyncResult {
   success: boolean;
   /** Number of tracks successfully copied/converted */
   tracksCopied: number;
+  /** Number of tracks skipped (already up-to-date on device) */
+  tracksSkipped: number;
   /** Track IDs that failed to sync */
   tracksFailed: string[];
   /** Detailed error messages */

@@ -108,7 +108,8 @@ export function useSync({
         const updatedIds = await window.api.getSyncedItems(syncFolder)
         setPreviouslySyncedItems(new Set(updatedIds))
         const deleteInfo = toDeleteIds.length > 0 ? `\nRemoved: ${toDeleteIds.length} item(s)` : ''
-        alert(`Sync complete!\n\nTracks copied: ${result.tracksCopied}${deleteInfo}\nErrors: ${result.errors.length}\n\n${result.errors.length > 0 ? 'Errors:\n' + result.errors.slice(0, 5).join('\n') : ''}`)
+        const skippedInfo = result.tracksSkipped > 0 ? `\nSkipped (already up-to-date): ${result.tracksSkipped}` : ''
+        alert(`Sync complete!\n\nTracks copied: ${result.tracksCopied}${skippedInfo}${deleteInfo}\nErrors: ${result.errors.length}\n\n${result.errors.length > 0 ? 'Errors:\n' + result.errors.slice(0, 5).join('\n') : ''}`)
       } else {
         alert(`Sync failed:\n\n${result.errors.join('\n')}`)
       }

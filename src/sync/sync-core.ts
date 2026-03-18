@@ -167,6 +167,7 @@ class SyncCoreImpl {
         return {
           success: false,
           tracksCopied: 0,
+          tracksSkipped: 0,
           tracksFailed: [],
           errors: destValidation.errors,
           totalSizeBytes: 0,
@@ -198,6 +199,7 @@ class SyncCoreImpl {
         return {
           success: false,
           tracksCopied: 0,
+          tracksSkipped: 0,
           tracksFailed: [],
           errors: ['No tracks found for selected items', ...errors],
           totalSizeBytes: 0,
@@ -227,17 +229,25 @@ class SyncCoreImpl {
           const outputFilename = await this.getOutputFilename(track, outputDir, options);
           const outputPath = `${outputDir}/${outputFilename}`;
           
-          // Check if already exists and skip
+          const willConvert = options.convertToMp3 && this.needsConversion(track.format);
+
+          // Skip if already up-to-date
           if (options.skipExisting && await this.deps.fs.exists(outputPath)) {
+            if (willConvert) {
+              // For converted files the output format differs from source,
+              // so size comparison is meaningless. Existence is sufficient.
+              stats.itemsSkipped++;
+              continue;
+            }
             const existingStat = await this.deps.fs.stat(outputPath);
-            if (existingStat.size === track.size) {
-              stats.itemsProcessed++;
+            if (existingStat.size === (track.size ?? 0) && track.size) {
+              stats.itemsSkipped++;
               continue;
             }
           }
-          
+
           // Copy or convert
-          if (options.convertToMp3 && this.needsConversion(track.format)) {
+          if (willConvert) {
             await this.convertAndCopy(track, outputPath, options.bitrate ?? '192k');
             stats.itemsConverted++;
           } else {
@@ -247,7 +257,7 @@ class SyncCoreImpl {
             await this.deps.fs.writeFile(outputPath, data);
             stats.bytesTransferred += track.size ?? 0;
           }
-          
+
           stats.itemsProcessed++;
           
         } catch (error) {
@@ -270,18 +280,20 @@ class SyncCoreImpl {
       return {
         success: errors.length === 0,
         tracksCopied: stats.itemsProcessed,
+        tracksSkipped: stats.itemsSkipped,
         tracksFailed,
         errors,
         totalSizeBytes: stats.bytesTransferred,
         durationMs: Date.now() - startTime,
       };
-      
+
     } catch (error) {
       if (error instanceof SyncCancelledError) {
         phaseManager.cancelled(stats.itemsProcessed, totalTracks || input.itemIds.length);
         return {
           success: false,
           tracksCopied: stats.itemsProcessed,
+          tracksSkipped: stats.itemsSkipped,
           tracksFailed: [],
           errors: ['Sync was cancelled by user'],
           totalSizeBytes: stats.bytesTransferred,
@@ -289,13 +301,14 @@ class SyncCoreImpl {
           cancelled: true,
         };
       }
-      
+
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       phaseManager.error(errorMsg);
-      
+
       return {
         success: false,
         tracksCopied: stats.itemsProcessed,
+        tracksSkipped: stats.itemsSkipped,
         tracksFailed: tracksFailed,
         errors: [errorMsg, ...errors],
         totalSizeBytes: stats.bytesTransferred,

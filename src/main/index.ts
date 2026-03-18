@@ -415,7 +415,7 @@ ipcMain.handle('sync:start2', async (event, options) => {
       }
     )
     
-    log.info(`Sync v2 completed: ${result.tracksCopied} tracks, ${result.errors.length} errors`)
+    log.info(`Sync v2 completed: ${result.tracksCopied} copied, ${result.tracksSkipped} skipped, ${result.errors.length} errors`)
 
     // Record to SQLite
     const status = result.cancelled ? 'cancelled' : result.success ? 'success' : 'error'
@@ -426,6 +426,7 @@ ipcMain.handle('sync:start2', async (event, options) => {
     return {
       success: result.success,
       tracksCopied: result.tracksCopied,
+      tracksSkipped: result.tracksSkipped,
       tracksFailed: result.tracksFailed,
       errors: result.errors,
       totalSizeBytes: result.totalSizeBytes,
