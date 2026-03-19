@@ -14,7 +14,7 @@ import { UserSelectorScreen } from './components/UserSelectorScreen'
 
 import { useDevices } from './hooks/useDevices'
 import { useSearch } from './hooks/useSearch'
-import { useSelection } from './hooks/useSelection'
+import { useDeviceSelections } from './hooks/useDeviceSelections'
 import { useLibrary } from './hooks/useLibrary'
 import { useSync } from './hooks/useSync'
 import { useJellyfinConnection } from './hooks/useJellyfinConnection'
@@ -22,18 +22,14 @@ import { useSavedDestinations } from './hooks/useSavedDestinations'
 
 function App(): JSX.Element {
   const [activeSection, setActiveSection] = useState<ActiveSection>('library')
-  const [activeDestinationPath, setActiveDestinationPath] = useState<string | null>(null)
 
-  const usbDevices = useDevices()
+  const { devices: usbDevices, refresh: refreshDevices } = useDevices()
   const { destinations: savedDestinations, addDestination, removeDestination } = useSavedDestinations()
 
-  const connection = useJellyfinConnection((_url, _apiKey, _userId) => {
-    // loading is triggered by useEffect below once isConnected becomes true
-  })
+  const connection = useJellyfinConnection((_url, _apiKey, _userId) => {})
 
   const lib = useLibrary(connection.jellyfinConfig, connection.userId)
 
-  // Load library once connection is established
   useEffect(() => {
     if (connection.isConnected && connection.jellyfinConfig && connection.userId) {
       lib.loadLibrary(connection.jellyfinConfig.url, connection.jellyfinConfig.apiKey, connection.userId)
@@ -42,18 +38,22 @@ function App(): JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection.isConnected])
 
-  const selection = useSelection(null, lib.artists, lib.albums, lib.playlists)
+  const deviceSelections = useDeviceSelections()
 
   const sync = useSync({
     jellyfinConfig: connection.jellyfinConfig,
     userId: connection.userId,
-    selectedTracks: selection.selectedTracks,
-    previouslySyncedItems: selection.previouslySyncedItems,
+    selectedTracks: deviceSelections.selectedTracks,
+    previouslySyncedItems: deviceSelections.previouslySyncedItems,
     artists: lib.artists,
     albums: lib.albums,
     playlists: lib.playlists,
     itemTypeIndexRef: lib.itemTypeIndexRef,
-    setPreviouslySyncedItems: selection.setPreviouslySyncedItems,
+    setPreviouslySyncedItems: (ids: Set<string>) => {
+      if (deviceSelections.activeDevicePath) {
+        deviceSelections.updateSyncedItems(deviceSelections.activeDevicePath, ids)
+      }
+    },
   })
 
   const { searchQuery, setSearchQuery, searchResults, isSearching } = useSearch(
@@ -61,21 +61,6 @@ function App(): JSX.Element {
     connection.userId
   )
 
-  // Load previously synced items when destination changes
-  useEffect(() => {
-    if (!sync.syncFolder) {
-      selection.setPreviouslySyncedItems(new Set())
-      return
-    }
-    window.api.getSyncedItems(sync.syncFolder).then((ids: string[]) => {
-      const idSet = new Set(ids)
-      selection.setPreviouslySyncedItems(idSet)
-      selection.selectAll([...idSet].map(id => ({ Id: id })))
-    }).catch(() => { /* ignore */ })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sync.syncFolder])
-
-  // Load active tab when it changes
   useEffect(() => {
     if (activeSection === 'library' && connection.jellyfinConfig && connection.userId) {
       lib.loadTab(lib.activeLibrary)
@@ -88,10 +73,10 @@ function App(): JSX.Element {
     lib.handleTabChange(tab)
   }
 
-  const handleDestinationClick = (path: string) => {
-    setActiveDestinationPath(path)
+  const handleDestinationClick = async (path: string) => {
     setActiveSection('device')
-    sync.handleSelectSyncFolder(path)
+    sync.setSyncFolder(path)
+    await deviceSelections.activateDevice(path)
   }
 
   const handleAddFolder = async () => {
@@ -104,17 +89,17 @@ function App(): JSX.Element {
   const handleRemoveDestination = (path: string) => {
     const dest = savedDestinations.find(d => d.path === path)
     if (dest) removeDestination(dest.id)
-    if (activeDestinationPath === path) {
-      setActiveDestinationPath(null)
+    deviceSelections.removeDevice(path)
+    if (deviceSelections.activeDevicePath === path) {
       setActiveSection('library')
       sync.setSyncFolder(null)
     }
   }
 
-  // Resolve display name for the active destination
   const getDestinationName = (path: string): string => {
-    const usb = usbDevices.flatMap(d => d.mountpoints.map(mp => ({ name: d.productName || d.displayName || 'USB Device', path: mp.path })))
-    const usbMatch = usb.find(d => d.path === path)
+    const usbMatch = usbDevices
+      .flatMap(d => d.mountpoints.map(mp => ({ name: d.productName || d.displayName || 'USB Device', path: mp.path })))
+      .find(d => d.path === path)
     if (usbMatch) return usbMatch.name
     const saved = savedDestinations.find(d => d.path === path)
     if (saved) return saved.name
@@ -127,9 +112,10 @@ function App(): JSX.Element {
   const isSavedDestination = (path: string) =>
     savedDestinations.some(d => d.path === path)
 
-  const selectedArtistsCount = lib.artists.filter(a => selection.selectedTracks.has(a.Id)).length
-  const selectedAlbumsCount = lib.albums.filter(a => selection.selectedTracks.has(a.Id)).length
-  const selectedPlaylistsCount = lib.playlists.filter(p => selection.selectedTracks.has(p.Id)).length
+  // Selection summary for the active device
+  const selectedArtistsCount = lib.artists.filter(a => deviceSelections.selectedTracks.has(a.Id)).length
+  const selectedAlbumsCount = lib.albums.filter(a => deviceSelections.selectedTracks.has(a.Id)).length
+  const selectedPlaylistsCount = lib.playlists.filter(p => deviceSelections.selectedTracks.has(p.Id)).length
 
   const getSelectionSummary = (): string => {
     const parts: string[] = []
@@ -143,8 +129,10 @@ function App(): JSX.Element {
     const items = lib.activeLibrary === 'artists' ? lib.artists
       : lib.activeLibrary === 'albums' ? lib.albums
       : lib.playlists
-    selection.selectAll(items)
+    deviceSelections.selectItems(items)
   }
+
+  const totalSelectedCount = deviceSelections.selectedTracks.size
 
   if (!connection.isConnected && !connection.isConnecting && !connection.showUserSelector) {
     return (
@@ -170,16 +158,11 @@ function App(): JSX.Element {
     )
   }
 
-  if (connection.isConnecting) {
-    return <ConnectingScreen />
-  }
+  if (connection.isConnecting) return <ConnectingScreen />
 
   return (
     <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
-      <AppHeader
-        isConnected={connection.isConnected}
-        onDisconnect={connection.disconnect}
-      />
+      <AppHeader isConnected={connection.isConnected} onDisconnect={connection.disconnect} />
 
       <SearchBar value={searchQuery} onChange={setSearchQuery} />
 
@@ -187,7 +170,7 @@ function App(): JSX.Element {
         <Sidebar
           activeSection={activeSection}
           activeLibrary={lib.activeLibrary}
-          activeDestinationPath={activeDestinationPath}
+          activeDestinationPath={deviceSelections.activeDevicePath}
           stats={lib.stats}
           pagination={lib.pagination}
           artists={lib.artists}
@@ -195,10 +178,11 @@ function App(): JSX.Element {
           playlists={lib.playlists}
           usbDevices={usbDevices}
           savedDestinations={savedDestinations}
-          selectedCount={selection.selectedTracks.size}
+          selectedCount={totalSelectedCount}
           onLibraryTab={handleLibraryTab}
           onDestinationClick={handleDestinationClick}
           onAddFolder={handleAddFolder}
+          onRefreshDevices={refreshDevices}
         />
 
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -211,8 +195,8 @@ function App(): JSX.Element {
                 query={searchQuery}
                 isSearching={isSearching}
                 results={searchResults}
-                selectedTracks={selection.selectedTracks}
-                onToggle={selection.toggleTrackSelection}
+                selectedTracks={deviceSelections.selectedTracks}
+                onToggle={deviceSelections.toggleItem}
               />
             </main>
           ) : activeSection === 'library' ? (
@@ -222,44 +206,45 @@ function App(): JSX.Element {
               albums={lib.albums}
               playlists={lib.playlists}
               pagination={lib.pagination}
-              selectedTracks={selection.selectedTracks}
-              previouslySyncedItems={selection.previouslySyncedItems}
+              selectedTracks={deviceSelections.selectedTracks}
+              previouslySyncedItems={deviceSelections.previouslySyncedItems}
               isLoadingMore={lib.isLoadingMore}
               searchQuery={searchQuery}
               error={lib.error}
-              onToggle={selection.toggleTrackSelection}
+              onToggle={deviceSelections.toggleItem}
               onSelectAll={selectAllInCurrentView}
-              onClearSelection={selection.clearSelection}
+              onClearSelection={deviceSelections.clearSelection}
               onClearError={() => lib.setError(null)}
               onLoadMore={lib.loadMore}
               selectionSummary={getSelectionSummary()}
               contentScrollRef={lib.contentScrollRef}
             />
-          ) : activeSection === 'device' && activeDestinationPath ? (
+          ) : activeSection === 'device' && deviceSelections.activeDevicePath ? (
             <main className="flex-1 overflow-auto flex flex-col p-6">
               <DeviceSyncPanel
-                destinationPath={activeDestinationPath}
-                destinationName={getDestinationName(activeDestinationPath)}
-                isUsbDevice={isUsbDevice(activeDestinationPath)}
-                isSaved={isSavedDestination(activeDestinationPath)}
+                destinationPath={deviceSelections.activeDevicePath}
+                destinationName={getDestinationName(deviceSelections.activeDevicePath)}
+                isUsbDevice={isUsbDevice(deviceSelections.activeDevicePath)}
+                isSaved={isSavedDestination(deviceSelections.activeDevicePath)}
                 convertToMp3={sync.convertToMp3}
                 bitrate={sync.bitrate}
                 isSyncing={sync.isSyncing}
                 isLoadingPreview={sync.isLoadingPreview}
                 syncProgress={sync.syncProgress}
-                selectedTracks={selection.selectedTracks}
-                previouslySyncedItems={selection.previouslySyncedItems}
+                selectedTracks={deviceSelections.selectedTracks}
+                previouslySyncedItems={deviceSelections.previouslySyncedItems}
                 artists={lib.artists}
                 albums={lib.albums}
                 playlists={lib.playlists}
                 showPreview={sync.showPreview}
                 previewData={sync.previewData}
+                onToggleItem={deviceSelections.toggleItem}
                 onToggleConvert={() => sync.setConvertToMp3(v => !v)}
                 onBitrateChange={sync.setBitrate}
                 onStartSync={sync.handleStartSync}
                 onCancelPreview={() => sync.setShowPreview(false)}
                 onConfirmSync={sync.executeSyncNow}
-                onRemoveDestination={() => handleRemoveDestination(activeDestinationPath)}
+                onRemoveDestination={() => handleRemoveDestination(deviceSelections.activeDevicePath!)}
               />
             </main>
           ) : (

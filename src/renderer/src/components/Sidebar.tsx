@@ -1,4 +1,4 @@
-import { User, Disc, ListMusic, HardDrive, Folder, Plus } from 'lucide-react'
+import { User, Disc, ListMusic, HardDrive, Folder, Plus, RotateCcw } from 'lucide-react'
 import type { ActiveSection, LibraryTab, LibraryStats, PaginationState, Artist, Album, Playlist, UsbDevice, SavedDestination } from '../appTypes'
 
 interface SidebarProps {
@@ -16,6 +16,7 @@ interface SidebarProps {
   onLibraryTab: (tab: LibraryTab) => void
   onDestinationClick: (path: string) => void
   onAddFolder: () => void
+  onRefreshDevices: () => void
 }
 
 export function Sidebar({
@@ -33,6 +34,7 @@ export function Sidebar({
   onLibraryTab,
   onDestinationClick,
   onAddFolder,
+  onRefreshDevices,
 }: SidebarProps): JSX.Element {
   const tabClass = (active: boolean) =>
     `w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active ? 'bg-blue-600 text-white' : 'hover:bg-zinc-800 text-zinc-300'}`
@@ -92,10 +94,19 @@ export function Sidebar({
       {/* Devices */}
       <div className="flex-1">
         <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-          Devices
-          {selectedCount > 0 && (
-            <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">{selectedCount}</span>
-          )}
+          <span className="flex items-center gap-1.5">
+            Devices
+            {selectedCount > 0 && (
+              <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">{selectedCount}</span>
+            )}
+          </span>
+          <button
+            onClick={onRefreshDevices}
+            className="p-0.5 text-zinc-600 hover:text-zinc-400 transition-colors"
+            title="Refresh devices"
+          >
+            <RotateCcw className="w-3 h-3" />
+          </button>
         </h3>
         <nav className="space-y-1">
           {/* USB devices */}

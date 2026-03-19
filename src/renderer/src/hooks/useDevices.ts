@@ -1,14 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { UsbDevice } from '../appTypes'
 
-export function useDevices(): UsbDevice[] {
+export function useDevices(): { devices: UsbDevice[]; refresh: () => void } {
   const [devices, setDevices] = useState<UsbDevice[]>([])
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     window.api?.listUsbDevices().then(setDevices)
-    window.api?.onUsbAttach(() => window.api?.listUsbDevices().then(setDevices))
-    window.api?.onUsbDetach(() => window.api?.listUsbDevices().then(setDevices))
   }, [])
 
-  return devices
+  useEffect(() => {
+    refresh()
+    const unsubAttach = window.api?.onUsbAttach(() => refresh())
+    const unsubDetach = window.api?.onUsbDetach(() => refresh())
+    return () => {
+      unsubAttach?.()
+      unsubDetach?.()
+    }
+  }, [refresh])
+
+  return { devices, refresh }
 }

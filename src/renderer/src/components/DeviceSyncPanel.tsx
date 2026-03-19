@@ -15,11 +15,13 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1e3).toFixed(0)} KB`
 }
 
+type ItemState = 'new' | 'synced' | 'remove'
+
 interface SyncItem {
   id: string
   name: string
   type: 'artist' | 'album' | 'playlist'
-  state: 'synced' | 'new' | 'remove'
+  state: ItemState
 }
 
 interface DeviceSyncPanelProps {
@@ -39,12 +41,31 @@ interface DeviceSyncPanelProps {
   playlists: Playlist[]
   showPreview: boolean
   previewData: PreviewData | null
+  onToggleItem: (id: string) => void
   onToggleConvert: () => void
   onBitrateChange: (b: Bitrate) => void
   onStartSync: () => void
   onCancelPreview: () => void
   onConfirmSync: () => void
   onRemoveDestination?: () => void
+}
+
+const STATE_LABEL: Record<ItemState, string> = {
+  new: 'New',
+  synced: 'Synced',
+  remove: 'Will remove',
+}
+
+const STATE_COLOR: Record<ItemState, string> = {
+  new: 'bg-blue-400',
+  synced: 'bg-green-400',
+  remove: 'bg-red-400',
+}
+
+const STATE_TEXT: Record<ItemState, string> = {
+  new: 'text-blue-400',
+  synced: 'text-green-400',
+  remove: 'text-red-400',
 }
 
 export function DeviceSyncPanel({
@@ -64,6 +85,7 @@ export function DeviceSyncPanel({
   playlists,
   showPreview,
   previewData,
+  onToggleItem,
   onToggleConvert,
   onBitrateChange,
   onStartSync,
@@ -72,40 +94,39 @@ export function DeviceSyncPanel({
   onRemoveDestination,
 }: DeviceSyncPanelProps): JSX.Element {
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null)
+  const [loadingInfo, setLoadingInfo] = useState(true)
 
   useEffect(() => {
     setDeviceInfo(null)
+    setLoadingInfo(true)
     window.api.getDeviceInfo(destinationPath)
       .then(info => { if (info?.total) setDeviceInfo(info) })
-      .catch(() => {/* ignore */})
+      .catch(() => {})
+      .finally(() => setLoadingInfo(false))
   }, [destinationPath])
 
-  // Compute sync state for each selected/previously-synced item
+  // Build sync item list from artists/albums/playlists
   const syncItems: SyncItem[] = []
-
-  const addItems = <T extends { Id: string; Name: string }>(
-    items: T[],
-    type: 'artist' | 'album' | 'playlist'
-  ) => {
+  const addItems = <T extends { Id: string; Name: string }>(items: T[], type: SyncItem['type']) => {
     for (const item of items) {
-      const isSelected = selectedTracks.has(item.Id)
-      const wasSynced = previouslySyncedItems.has(item.Id)
-      if (isSelected && wasSynced) syncItems.push({ id: item.Id, name: item.Name, type, state: 'synced' })
-      else if (isSelected && !wasSynced) syncItems.push({ id: item.Id, name: item.Name, type, state: 'new' })
-      else if (!isSelected && wasSynced) syncItems.push({ id: item.Id, name: item.Name, type, state: 'remove' })
+      const selected = selectedTracks.has(item.Id)
+      const synced = previouslySyncedItems.has(item.Id)
+      if (selected && synced) syncItems.push({ id: item.Id, name: item.Name, type, state: 'synced' })
+      else if (selected) syncItems.push({ id: item.Id, name: item.Name, type, state: 'new' })
+      else if (synced) syncItems.push({ id: item.Id, name: item.Name, type, state: 'remove' })
     }
   }
-
   addItems(artists, 'artist')
   addItems(albums, 'album')
   addItems(playlists, 'playlist')
 
-  const newItems = syncItems.filter(i => i.state === 'new')
-  const syncedItems = syncItems.filter(i => i.state === 'synced')
-  const removeItems = syncItems.filter(i => i.state === 'remove')
+  const groups: [ItemState, string][] = [
+    ['new', 'New'],
+    ['synced', 'On device'],
+    ['remove', 'Will remove'],
+  ]
 
   const usedPct = deviceInfo ? Math.round((deviceInfo.used / deviceInfo.total) * 100) : null
-
   const Icon = isUsbDevice ? HardDrive : Folder
 
   return (
@@ -134,7 +155,9 @@ export function DeviceSyncPanel({
         </div>
 
         {/* Space bar */}
-        {deviceInfo ? (
+        {loadingInfo ? (
+          <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 mb-4 h-16 animate-pulse" />
+        ) : deviceInfo ? (
           <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-zinc-400">Storage</span>
@@ -147,72 +170,54 @@ export function DeviceSyncPanel({
               />
             </div>
           </div>
-        ) : (
-          <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 mb-4 h-16 animate-pulse" />
-        )}
+        ) : null}
 
-        {/* Sync items overview */}
+        {/* Sync items — grouped, each toggleable */}
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 mb-4 overflow-hidden">
           {syncItems.length === 0 ? (
             <div className="p-6 text-center text-zinc-500 text-sm">
               <Music className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              No items selected for sync
+              <p>No items selected</p>
+              <p className="text-xs mt-1 text-zinc-600">Select artists, albums or playlists from the library</p>
             </div>
           ) : (
             <div className="divide-y divide-zinc-800">
-              {/* New items */}
-              {newItems.length > 0 && (
-                <div className="p-4">
-                  <p className="text-xs font-medium text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <RefreshCw className="w-3 h-3" /> New · {newItems.length}
-                  </p>
-                  <div className="space-y-1">
-                    {newItems.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                        <span className="truncate">{item.name}</span>
-                        <span className="text-xs text-zinc-600 ml-auto flex-shrink-0">{item.type}</span>
-                      </div>
-                    ))}
+              {groups.map(([state, label]) => {
+                const items = syncItems.filter(i => i.state === state)
+                if (items.length === 0) return null
+                return (
+                  <div key={state} className="p-4">
+                    <p className={`text-xs font-medium uppercase tracking-wider mb-2 flex items-center gap-1.5 ${STATE_TEXT[state]}`}>
+                      {state === 'new' && <RefreshCw className="w-3 h-3" />}
+                      {state === 'remove' && <X className="w-3 h-3" />}
+                      {label} · {items.length}
+                    </p>
+                    <div className="space-y-1">
+                      {items.map(item => (
+                        <button
+                          key={item.id}
+                          onClick={() => onToggleItem(item.id)}
+                          className="w-full flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-zinc-800 transition-colors text-left group"
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATE_COLOR[item.state]}`} />
+                          <span className={`flex-1 truncate ${item.state === 'remove' ? 'line-through opacity-50' : ''}`}>
+                            {item.name}
+                          </span>
+                          <span className="text-xs text-zinc-600 flex-shrink-0">{item.type}</span>
+                          <span className="text-xs text-zinc-600 opacity-0 group-hover:opacity-100 flex-shrink-0">
+                            {item.state === 'remove' ? 'undo' : 'remove'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-zinc-600 mt-2 px-2">
+                      {state === 'new' && 'Click an item to remove it from this sync'}
+                      {state === 'synced' && 'Click an item to remove it from device'}
+                      {state === 'remove' && 'Click an item to keep it on device'}
+                    </p>
                   </div>
-                </div>
-              )}
-
-              {/* Already synced */}
-              {syncedItems.length > 0 && (
-                <div className="p-4">
-                  <p className="text-xs font-medium text-green-400 uppercase tracking-wider mb-2">
-                    Already synced · {syncedItems.length}
-                  </p>
-                  <div className="space-y-1">
-                    {syncedItems.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-sm text-zinc-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                        <span className="truncate">{item.name}</span>
-                        <span className="text-xs text-zinc-600 ml-auto flex-shrink-0">{item.type}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Will remove */}
-              {removeItems.length > 0 && (
-                <div className="p-4">
-                  <p className="text-xs font-medium text-red-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <X className="w-3 h-3" /> Will remove · {removeItems.length}
-                  </p>
-                  <div className="space-y-1">
-                    {removeItems.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-sm text-zinc-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
-                        <span className="truncate line-through opacity-60">{item.name}</span>
-                        <span className="text-xs text-zinc-600 ml-auto flex-shrink-0">{item.type}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                )
+              })}
             </div>
           )}
         </div>
@@ -249,7 +254,7 @@ export function DeviceSyncPanel({
           )}
         </div>
 
-        {/* Sync button + progress */}
+        {/* Sync button */}
         <button
           onClick={onStartSync}
           disabled={isSyncing || isLoadingPreview || syncItems.length === 0}
@@ -260,7 +265,7 @@ export function DeviceSyncPanel({
           ) : isSyncing ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Syncing...</>
           ) : (
-            'Start Sync'
+            `Sync to ${destinationName}`
           )}
         </button>
 
