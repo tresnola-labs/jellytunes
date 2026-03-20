@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import type { JellyfinConfig, Artist, Album, Playlist, Bitrate, SyncProgressInfo, PreviewData, ItemTypeIndex } from '../appTypes'
 
+interface SearchResults {
+  artists: Artist[]
+  albums: Album[]
+  playlists: Playlist[]
+}
+
 interface UseSyncOptions {
   jellyfinConfig: JellyfinConfig | null
   userId: string | null
@@ -9,8 +15,16 @@ interface UseSyncOptions {
   artists: Artist[]
   albums: Album[]
   playlists: Playlist[]
+  searchResults: SearchResults | null
   itemTypeIndexRef: React.MutableRefObject<ItemTypeIndex>
   setPreviouslySyncedItems: (items: Set<string>) => void
+}
+
+// Merge library array with search results, deduplicating by Id
+function merge<T extends { Id: string }>(lib: T[], search: T[]): T[] {
+  const map = new Map(lib.map(x => [x.Id, x]))
+  search.forEach(x => { if (!map.has(x.Id)) map.set(x.Id, x) })
+  return [...map.values()]
 }
 
 export function useSync({
@@ -21,6 +35,7 @@ export function useSync({
   artists,
   albums,
   playlists,
+  searchResults,
   setPreviouslySyncedItems,
 }: UseSyncOptions) {
   const [syncFolder, setSyncFolder] = useState<string | null>(null)
@@ -41,10 +56,14 @@ export function useSync({
     if (folder) setSyncFolder(folder)
   }
 
+  const allArtists = merge(artists, searchResults?.artists ?? [])
+  const allAlbums = merge(albums, searchResults?.albums ?? [])
+  const allPlaylists = merge(playlists, searchResults?.playlists ?? [])
+
   const buildItemTypesMap = () => {
-    const artistIds = artists.filter(a => selectedTracks.has(a.Id)).map(a => a.Id)
-    const albumIds = albums.filter(a => selectedTracks.has(a.Id)).map(a => a.Id)
-    const playlistIds = playlists.filter(p => selectedTracks.has(p.Id)).map(p => p.Id)
+    const artistIds = allArtists.filter(a => selectedTracks.has(a.Id)).map(a => a.Id)
+    const albumIds = allAlbums.filter(a => selectedTracks.has(a.Id)).map(a => a.Id)
+    const playlistIds = allPlaylists.filter(p => selectedTracks.has(p.Id)).map(p => p.Id)
     const map: Record<string, 'artist' | 'album' | 'playlist'> = {}
     artistIds.forEach(id => { if (id) map[id] = 'artist' })
     albumIds.forEach(id => { if (id) map[id] = 'album' })
@@ -54,9 +73,9 @@ export function useSync({
 
   const buildToDeleteIds = () => {
     const visibleIds = new Set([
-      ...artists.map(a => a.Id),
-      ...albums.map(a => a.Id),
-      ...playlists.map(p => p.Id),
+      ...allArtists.map(a => a.Id),
+      ...allAlbums.map(a => a.Id),
+      ...allPlaylists.map(p => p.Id),
     ])
     return [...previouslySyncedItems].filter(id => visibleIds.has(id) && !selectedTracks.has(id))
   }
@@ -80,9 +99,9 @@ export function useSync({
         setSyncProgress({ current: 0, total: 0, file: 'Removing deselected items...' })
         const deleteTypesMap: Record<string, 'artist' | 'album' | 'playlist'> = {}
         toDeleteIds.forEach(id => {
-          if (artists.find(a => a.Id === id)) deleteTypesMap[id] = 'artist'
-          else if (albums.find(a => a.Id === id)) deleteTypesMap[id] = 'album'
-          else if (playlists.find(p => p.Id === id)) deleteTypesMap[id] = 'playlist'
+          if (allArtists.find(a => a.Id === id)) deleteTypesMap[id] = 'artist'
+          else if (allAlbums.find(a => a.Id === id)) deleteTypesMap[id] = 'album'
+          else if (allPlaylists.find(p => p.Id === id)) deleteTypesMap[id] = 'playlist'
         })
         await window.api.removeItems({
           serverUrl: jellyfinConfig.url,
@@ -163,7 +182,7 @@ export function useSync({
         window.api.getSyncedItems(syncFolder),
       ])
       const alreadySyncedCount = syncedItems.filter((id: string) => selectedIds.includes(id)).length
-      const visibleIds = new Set([...artists.map(a => a.Id), ...albums.map(a => a.Id), ...playlists.map(p => p.Id)])
+      const visibleIds = new Set([...allArtists.map(a => a.Id), ...allAlbums.map(a => a.Id), ...allPlaylists.map(p => p.Id)])
       const willRemoveCount = [...previouslySyncedItems].filter(id => visibleIds.has(id) && !selectedTracks.has(id)).length
       setPreviewData({ ...estimate, alreadySyncedCount, willRemoveCount })
       setShowPreview(true)

@@ -38,6 +38,11 @@ function App(): JSX.Element {
 
   const deviceSelections = useDeviceSelections()
 
+  const { searchQuery, setSearchQuery, searchResults, isSearching } = useSearch(
+    connection.jellyfinConfig,
+    connection.userId
+  )
+
   const sync = useSync({
     jellyfinConfig: connection.jellyfinConfig,
     userId: connection.userId,
@@ -46,6 +51,7 @@ function App(): JSX.Element {
     artists: lib.artists,
     albums: lib.albums,
     playlists: lib.playlists,
+    searchResults,
     itemTypeIndexRef: lib.itemTypeIndexRef,
     setPreviouslySyncedItems: (ids: Set<string>) => {
       if (deviceSelections.activeDevicePath) {
@@ -53,11 +59,6 @@ function App(): JSX.Element {
       }
     },
   })
-
-  const { searchQuery, setSearchQuery, searchResults, isSearching } = useSearch(
-    connection.jellyfinConfig,
-    connection.userId
-  )
 
   useEffect(() => {
     if (activeSection === 'library' && connection.jellyfinConfig && connection.userId) {
