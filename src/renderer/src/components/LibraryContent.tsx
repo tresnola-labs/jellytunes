@@ -92,7 +92,7 @@ export function LibraryContent({
     <main ref={contentScrollRef} className="flex-1 overflow-auto flex flex-col">
 
       {/* Device context banner */}
-      {activeDeviceName ? (
+      {activeDeviceName && (
         <button
           onClick={onGoToDevice}
           className="flex items-center gap-2 w-full px-4 py-2 bg-blue-600/10 border-b border-blue-600/20 text-sm text-blue-400 hover:bg-blue-600/15 transition-colors text-left flex-shrink-0"
@@ -104,10 +104,6 @@ export function LibraryContent({
           <span>Selecting for <strong>{activeDeviceName}</strong></span>
           <span className="ml-auto text-blue-500/60 text-xs">View device →</span>
         </button>
-      ) : (
-        <div className="px-4 py-2 border-b border-zinc-800 text-xs text-zinc-600 flex-shrink-0">
-          Select a device in the sidebar to start syncing
-        </div>
       )}
 
       <div className="flex-1 overflow-auto p-6">
