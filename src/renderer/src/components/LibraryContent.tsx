@@ -3,7 +3,7 @@ import { Loader2, X, HardDrive, Folder, Search } from 'lucide-react'
 import { LibraryItem } from './LibraryItem'
 import type { LibraryTab, Artist, Album, Playlist, PaginationState } from '../appTypes'
 
-type SyncFilter = 'all' | 'synced' | 'unsynced'
+type SyncFilter = 'all' | 'selected' | 'unselected'
 
 interface SearchResults {
   artists: Artist[]
@@ -67,6 +67,11 @@ export function LibraryContent({
 }: LibraryContentProps): JSX.Element {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const [syncFilter, setSyncFilter] = useState<SyncFilter>('all')
+
+  // Reset filter when selection is cleared
+  useEffect(() => {
+    if (selectedTracks.size === 0) setSyncFilter('all')
+  }, [selectedTracks.size])
   const [noDeviceHint, setNoDeviceHint] = useState(false)
 
   const isSearchActive = searchQuery.length >= 2
@@ -94,8 +99,8 @@ export function LibraryContent({
   }, [activeDeviceName, onToggle])
 
   const applySyncFilter = <T extends { Id: string }>(items: T[]) => {
-    if (syncFilter === 'synced') return items.filter(i => previouslySyncedItems.has(i.Id))
-    if (syncFilter === 'unsynced') return items.filter(i => !previouslySyncedItems.has(i.Id))
+    if (syncFilter === 'selected') return items.filter(i => selectedTracks.has(i.Id))
+    if (syncFilter === 'unselected') return items.filter(i => !selectedTracks.has(i.Id))
     return items
   }
 
@@ -140,15 +145,15 @@ export function LibraryContent({
           {/* Title + sync filter */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold capitalize">{activeLibrary}</h2>
-            {previouslySyncedItems.size > 0 && (
+            {selectedTracks.size > 0 && (
               <div className="flex gap-1 text-xs bg-[#1e2836] rounded-lg p-1">
-                {(['all', 'synced', 'unsynced'] as SyncFilter[]).map(f => (
+                {(['all', 'selected', 'unselected'] as SyncFilter[]).map(f => (
                   <button
                     key={f}
                     onClick={() => setSyncFilter(f)}
-                    className={`px-3 py-1 rounded-md transition-colors ${syncFilter === f ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                    className={`px-3 py-1 rounded-md transition-colors ${syncFilter === f ? 'bg-jf-purple/40 text-jf-purple-light' : 'text-zinc-400 hover:text-zinc-200'}`}
                   >
-                    {f === 'all' ? 'All' : f === 'synced' ? 'Synced' : 'Not synced'}
+                    {f === 'all' ? 'All' : f === 'selected' ? 'Selected' : 'Not selected'}
                   </button>
                 ))}
               </div>
