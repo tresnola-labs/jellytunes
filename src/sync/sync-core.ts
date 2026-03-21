@@ -23,7 +23,10 @@ import {
   buildDestinationPath,
   getRelativePath,
   getFilenameFromPath,
+  sanitizePathComponent,
+  hasTraversalSegment,
 } from './sync-config';
+import type { FilesystemType } from './types';
 
 import {
   createApiClient,
@@ -57,17 +60,13 @@ import {
  * Validate that a path stays within allowed boundaries (prevent path traversal)
  */
 function validatePathTraversal(basePath: string, relativePath: string): void {
-  // Check for path traversal attempts (only .. should be blocked)
-  // Note: paths may contain consecutive slashes, so we normalize first
-  const normalizedPath = relativePath.replace(/\/+/g, '/');
-  
-  if (normalizedPath.includes('..')) {
+  if (hasTraversalSegment(relativePath)) {
     throw new Error(`Path traversal attempt detected: "${relativePath}" would escape "${basePath}"`);
   }
   
   // Normalize and verify the final path is still within base
   const normalizedBase = basePath.replace(/\/+$/, '');
-  const normalizedFull = `${normalizedBase}/${normalizedPath}`.replace(/\/+/g, '/');
+  const normalizedFull = `${normalizedBase}/${relativePath}`.replace(/\/+/g, '/');
   
   if (!normalizedFull.startsWith(normalizedBase + '/') && normalizedFull !== normalizedBase) {
     throw new Error(`Path traversal attempt detected: final path "${normalizedFull}" escapes base "${basePath}"`);
@@ -223,7 +222,7 @@ class SyncCoreImpl {
         phaseManager.updateCopying(i + 1, tracks.length, track.name);
         
         try {
-          const outputDir = this.getOutputDir(track, input.destinationPath, options.preserveStructure ?? true);
+          const outputDir = this.getOutputDir(track, input.destinationPath, options.preserveStructure ?? true, options.filesystemType ?? 'unknown');
           await ensureDirectory(outputDir, this.deps.fs);
           
           const willConvert = options.convertToMp3 && this.needsConversion(track.format);
@@ -492,7 +491,8 @@ class SyncCoreImpl {
   private getOutputDir(
     track: { path: string; artists?: string[]; album?: string; year?: number },
     basePath: string,
-    preserveStructure: boolean
+    preserveStructure: boolean,
+    filesystemType: FilesystemType = 'unknown'
   ): string {
     const serverRelativePath = this.serverRootPath
       ? getRelativePath(track.path, this.serverRootPath)
@@ -505,7 +505,8 @@ class SyncCoreImpl {
       const parts = serverRelativePath.split('/');
       if (parts.length > 1) {
         parts.pop(); // remove filename
-        return `${basePath}/${parts.join('/')}`;
+        const sanitized = parts.map(p => sanitizePathComponent(p, filesystemType));
+        return `${basePath}/${sanitized.join('/')}`;
       }
       return basePath;
     }
@@ -514,13 +515,17 @@ class SyncCoreImpl {
     const parts = [basePath, 'lib'];
 
     if (track.artists?.[0]) {
-      parts.push(track.artists[0].replace(/[<>:"/\\|?*]/g, '_').slice(0, 100));
+      const artist = sanitizePathComponent(
+        track.artists[0].replace(/[<>:"/\\|?*]/g, '_').slice(0, 100),
+        filesystemType
+      );
+      parts.push(artist);
     }
 
     if (track.album) {
       let folder = track.album.replace(/[<>:"/\\|?*]/g, '_').slice(0, 100);
       if (track.year) folder += ` (${track.year})`;
-      parts.push(folder);
+      parts.push(sanitizePathComponent(folder, filesystemType));
     }
 
     return parts.join('/');
@@ -564,10 +569,16 @@ class SyncCoreImpl {
   ): string {
     let filename = getFilenameFromPath(track.path);
 
-    filename = filename.replace(/[<>:"|?*]/g, '_');
-    if (filename.includes('..') || filename.startsWith('.') || filename.endsWith(' ')) {
-      throw new Error(`Invalid filename: suspicious characters detected in "${filename}"`);
+    if (hasTraversalSegment(filename) || filename.includes('/') || filename.includes('\\')) {
+      throw new Error(`Invalid filename: path traversal detected in "${filename}"`);
     }
+
+    // Apply filesystem-specific sanitization (handles FAT32/exFAT/NTFS invalid chars,
+    // trailing dots/spaces, reserved names, length limits)
+    filename = sanitizePathComponent(filename, options.filesystemType ?? 'unknown');
+
+    // Fallback: replace any remaining forbidden chars for non-Windows filesystems
+    filename = filename.replace(/[<>:"|?*]/g, '_');
 
     if (options.convertToMp3 && !filename.toLowerCase().endsWith('.mp3')) {
       filename = filename.replace(/\.[^.]+$/, '.mp3');
@@ -627,6 +638,16 @@ class SyncCoreImpl {
           // Adjust extension if tracks were converted to MP3
           if (options.convertToMp3 && !relativePath.toLowerCase().endsWith('.mp3')) {
             relativePath = relativePath.replace(/\.[^.]+$/, '.mp3');
+          }
+
+          // Apply the same per-component sanitization used when writing files, so
+          // M3U8 entries match the actual paths on disk (critical for FAT32/exFAT/NTFS)
+          const fs = options.filesystemType ?? 'unknown';
+          if (fs !== 'unknown') {
+            relativePath = relativePath
+              .split('/')
+              .map(segment => sanitizePathComponent(segment, fs))
+              .join('/');
           }
 
           const artistLabel = track.artists?.join(', ') ?? track.albumArtist ?? '';

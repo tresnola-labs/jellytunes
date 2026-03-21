@@ -5,7 +5,9 @@
  * Pure functions with no external dependencies.
  */
 
-import type { SyncConfig, SyncOptions, ConfigValidationResult } from './types';
+import type { SyncConfig, SyncOptions, ConfigValidationResult, FilesystemType } from './types';
+
+export type { FilesystemType };
 
 /**
  * Default sync options
@@ -15,7 +17,47 @@ export const DEFAULT_SYNC_OPTIONS: Required<SyncOptions> = {
   bitrate: '192k',
   skipExisting: true,
   preserveStructure: true,
+  filesystemType: 'unknown',
 };
+
+/** Windows/FAT32 reserved filenames that cannot exist on those filesystems */
+const FAT32_RESERVED_RE = /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\.|$)/i;
+
+/**
+ * Sanitize a single path component (directory name or filename) for FAT32/exFAT/NTFS.
+ * - Replaces forbidden characters with `_`
+ * - Strips trailing dots and spaces (FAT32 silently removes them, causing path mismatches)
+ * - Prefixes Windows-reserved names
+ * - Truncates to 255 chars while preserving extension
+ * - Never returns an empty string (falls back to `_`)
+ *
+ * For non-Windows-family filesystems the segment is returned unchanged.
+ */
+export function sanitizePathComponent(segment: string, filesystem: FilesystemType): string {
+  if (filesystem !== 'fat32' && filesystem !== 'exfat' && filesystem !== 'ntfs') return segment;
+
+  let s = segment;
+  // Characters forbidden on FAT32/NTFS (forward slash is already a path separator, not in components)
+  s = s.replace(/[<>:"|?*\\]/g, '_');
+  // FAT32 silently strips trailing dots and spaces — make the stripping explicit so paths match
+  s = s.replace(/[. ]+$/, '');
+  // Strip leading spaces
+  s = s.replace(/^ +/, '');
+  // Truncate to 255 chars, keeping the file extension intact
+  if (s.length > 255) {
+    const extMatch = s.match(/(\.[^.]+)$/);
+    if (extMatch) {
+      s = s.slice(0, 255 - extMatch[1].length) + extMatch[1];
+    } else {
+      s = s.slice(0, 255);
+    }
+  }
+  // Prefix Windows-reserved names (e.g. CON → _CON)
+  if (FAT32_RESERVED_RE.test(s)) {
+    s = '_' + s;
+  }
+  return s || '_';
+}
 
 /**
  * Valid bitrates for MP3 conversion
@@ -239,6 +281,14 @@ export function buildSyncFilename(
 }
 
 /**
+ * Check whether a path (or single segment) contains a literal ".." traversal segment.
+ * Normalizes consecutive slashes before splitting.
+ */
+export function hasTraversalSegment(pathOrSegment: string): boolean {
+  return pathOrSegment.replace(/\/+/g, '/').split('/').some(s => s === '..');
+}
+
+/**
  * Build full output path with optional folder structure
  */
 export function buildOutputPath(
@@ -319,8 +369,7 @@ export function buildDestinationPath(
   // Remove server root to get relative path
   const relativePath = serverPath.replace(serverRootPath, '').replace(/\/+/g, '/');
   
-  // Validate for path traversal attempts (only check for .. after normalization)
-  if (relativePath.includes('..')) {
+  if (hasTraversalSegment(relativePath)) {
     throw new Error(`Invalid path: path traversal attempt detected in "${relativePath}"`);
   }
   

@@ -51,6 +51,9 @@ const api = {
   
   getDeviceInfo: (devicePath: string): Promise<DeviceInfo> =>
     ipcRenderer.invoke('usb:getDeviceInfo', devicePath),
+
+  getFilesystem: (devicePath: string): Promise<string> =>
+    ipcRenderer.invoke('device:getFilesystem', devicePath),
   
   getTrackSize: (trackPath: string): Promise<number> =>
     ipcRenderer.invoke('usb:getTrackSize', trackPath),

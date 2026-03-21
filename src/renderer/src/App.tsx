@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import type { ActiveSection, LibraryTab } from './appTypes'
+import { useState, useEffect, useRef } from 'react'
+import type { ActiveSection, LibraryTab, Artist, Album, Playlist } from './appTypes'
 
 import { AppHeader } from './components/AppHeader'
 import { Sidebar } from './components/Sidebar'
@@ -43,16 +43,46 @@ function App(): JSX.Element {
     connection.userId
   )
 
+  // Persistent cache of full item objects found via search
+  const searchItemCacheRef = useRef<{
+    artists: Map<string, Artist>
+    albums: Map<string, Album>
+    playlists: Map<string, Playlist>
+  }>({ artists: new Map(), albums: new Map(), playlists: new Map() })
+
+  // Clear cache on disconnect so stale data doesn't carry over to next server
+  useEffect(() => {
+    if (!connection.isConnected) {
+      searchItemCacheRef.current = { artists: new Map(), albums: new Map(), playlists: new Map() }
+    }
+  }, [connection.isConnected])
+
+  // Accumulate search result objects into cache
+  useEffect(() => {
+    if (!searchResults) return
+    searchResults.artists.forEach(a => searchItemCacheRef.current.artists.set(a.Id, a))
+    searchResults.albums.forEach(a => searchItemCacheRef.current.albums.set(a.Id, a))
+    searchResults.playlists.forEach(p => searchItemCacheRef.current.playlists.set(p.Id, p))
+  }, [searchResults])
+
+  // Merge paginated arrays with cached search objects (dedup by Id)
+  function mergeWithCache<T extends { Id: string }>(base: T[], extra: T[]): T[] {
+    const map = new Map(base.map(x => [x.Id, x]))
+    extra.forEach(x => { if (!map.has(x.Id)) map.set(x.Id, x) })
+    return [...map.values()]
+  }
+  const extArtists = mergeWithCache(lib.artists, [...searchItemCacheRef.current.artists.values()])
+  const extAlbums = mergeWithCache(lib.albums, [...searchItemCacheRef.current.albums.values()])
+  const extPlaylists = mergeWithCache(lib.playlists, [...searchItemCacheRef.current.playlists.values()])
+
   const sync = useSync({
     jellyfinConfig: connection.jellyfinConfig,
     userId: connection.userId,
     selectedTracks: deviceSelections.selectedTracks,
     previouslySyncedItems: deviceSelections.previouslySyncedItems,
-    artists: lib.artists,
-    albums: lib.albums,
-    playlists: lib.playlists,
-    searchResults,
-    itemTypeIndexRef: lib.itemTypeIndexRef,
+    artists: extArtists,
+    albums: extAlbums,
+    playlists: extPlaylists,
     setPreviouslySyncedItems: (ids: Set<string>) => {
       if (deviceSelections.activeDevicePath) {
         deviceSelections.updateSyncedItems(deviceSelections.activeDevicePath, ids)
@@ -111,10 +141,10 @@ function App(): JSX.Element {
   const isSavedDestination = (path: string) =>
     savedDestinations.some(d => d.path === path)
 
-  // Selection summary for the active device
-  const selectedArtistsCount = lib.artists.filter(a => deviceSelections.selectedTracks.has(a.Id)).length
-  const selectedAlbumsCount = lib.albums.filter(a => deviceSelections.selectedTracks.has(a.Id)).length
-  const selectedPlaylistsCount = lib.playlists.filter(p => deviceSelections.selectedTracks.has(p.Id)).length
+  // Selection summary for the active device (use extended arrays to count search-selected items)
+  const selectedArtistsCount = extArtists.filter(a => deviceSelections.selectedTracks.has(a.Id)).length
+  const selectedAlbumsCount = extAlbums.filter(a => deviceSelections.selectedTracks.has(a.Id)).length
+  const selectedPlaylistsCount = extPlaylists.filter(p => deviceSelections.selectedTracks.has(p.Id)).length
 
   const getSelectionSummary = (): string => {
     const parts: string[] = []
@@ -132,6 +162,12 @@ function App(): JSX.Element {
   }
 
   const totalSelectedCount = deviceSelections.selectedTracks.size
+
+  // While a sync is running, lock the view to the syncing device
+  const effectiveSection = sync.isSyncing ? 'device' : activeSection
+  const effectiveDevicePath = sync.isSyncing && sync.syncFolder
+    ? sync.syncFolder
+    : deviceSelections.activeDevicePath
 
   if (!connection.isConnected && !connection.isConnecting && !connection.showUserSelector) {
     return (
@@ -182,7 +218,7 @@ function App(): JSX.Element {
         />
 
         <div className="flex-1 overflow-hidden flex flex-col">
-          {activeSection === 'library' ? (
+          {effectiveSection === 'library' ? (
             <LibraryContent
               activeLibrary={lib.activeLibrary}
               artists={lib.artists}
@@ -209,13 +245,13 @@ function App(): JSX.Element {
               searchResults={searchResults}
               isSearching={isSearching}
             />
-          ) : activeSection === 'device' && deviceSelections.activeDevicePath ? (
+          ) : effectiveSection === 'device' && effectiveDevicePath ? (
             <main className="flex-1 overflow-auto flex flex-col p-6">
               <DeviceSyncPanel
-                destinationPath={deviceSelections.activeDevicePath}
-                destinationName={getDestinationName(deviceSelections.activeDevicePath)}
-                isUsbDevice={isUsbDevice(deviceSelections.activeDevicePath)}
-                isSaved={isSavedDestination(deviceSelections.activeDevicePath)}
+                destinationPath={effectiveDevicePath}
+                destinationName={getDestinationName(effectiveDevicePath)}
+                isUsbDevice={isUsbDevice(effectiveDevicePath)}
+                isSaved={isSavedDestination(effectiveDevicePath)}
                 convertToMp3={sync.convertToMp3}
                 bitrate={sync.bitrate}
                 isSyncing={sync.isSyncing}
@@ -223,9 +259,9 @@ function App(): JSX.Element {
                 syncProgress={sync.syncProgress}
                 selectedTracks={deviceSelections.selectedTracks}
                 previouslySyncedItems={deviceSelections.previouslySyncedItems}
-                artists={lib.artists}
-                albums={lib.albums}
-                playlists={lib.playlists}
+                artists={extArtists}
+                albums={extAlbums}
+                playlists={extPlaylists}
                 showPreview={sync.showPreview}
                 previewData={sync.previewData}
                 onToggleItem={deviceSelections.toggleItem}
@@ -234,7 +270,7 @@ function App(): JSX.Element {
                 onStartSync={sync.handleStartSync}
                 onCancelPreview={() => sync.setShowPreview(false)}
                 onConfirmSync={sync.executeSyncNow}
-                onRemoveDestination={() => handleRemoveDestination(deviceSelections.activeDevicePath!)}
+                onRemoveDestination={() => handleRemoveDestination(effectiveDevicePath!)}
               />
             </main>
           ) : (

@@ -56,6 +56,11 @@ export interface SyncInput {
 }
 
 /**
+ * Destination filesystem type — used to apply compatibility sanitization
+ */
+export type FilesystemType = 'fat32' | 'exfat' | 'ntfs' | 'apfs' | 'hfs+' | 'ext4' | 'unknown';
+
+/**
  * Optional sync behavior settings
  */
 export interface SyncOptions {
@@ -67,6 +72,8 @@ export interface SyncOptions {
   skipExisting?: boolean;
   /** Preserve folder structure (e.g., Artist/Album/Track) */
   preserveStructure?: boolean;
+  /** Destination filesystem — enables compatibility sanitization for FAT32/exFAT/NTFS */
+  filesystemType?: FilesystemType;
 }
 
 /**

@@ -106,14 +106,19 @@ export function DeviceSyncPanel({
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null)
   const [loadingInfo, setLoadingInfo] = useState(true)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const [filesystemType, setFilesystemType] = useState<string>('unknown')
 
   useEffect(() => {
     setDeviceInfo(null)
     setLoadingInfo(true)
-    window.api.getDeviceInfo(destinationPath)
-      .then(info => { if (info?.total) setDeviceInfo(info) })
-      .catch(() => {})
-      .finally(() => setLoadingInfo(false))
+    setFilesystemType('unknown')
+    Promise.all([
+      window.api.getDeviceInfo(destinationPath).catch(() => null),
+      window.api.getFilesystem(destinationPath).catch(() => 'unknown'),
+    ]).then(([info, fs]) => {
+      if (info?.total) setDeviceInfo(info)
+      setFilesystemType(fs ?? 'unknown')
+    }).finally(() => setLoadingInfo(false))
   }, [destinationPath])
 
   // Build sync item list from artists/albums/playlists
@@ -139,6 +144,11 @@ export function DeviceSyncPanel({
 
   const usedPct = deviceInfo ? Math.round((deviceInfo.used / deviceInfo.total) * 100) : null
   const Icon = isUsbDevice ? HardDrive : Folder
+  const isFat32 = filesystemType === 'fat32'
+  const isExFat = filesystemType === 'exfat'
+  const fsLabel: Record<string, string> = {
+    fat32: 'FAT32', exfat: 'exFAT', ntfs: 'NTFS', apfs: 'APFS', 'hfs+': 'HFS+', ext4: 'ext4',
+  }
 
   return (
     <>
@@ -154,7 +164,7 @@ export function DeviceSyncPanel({
               <p className="text-xs text-zinc-500 font-mono mt-0.5">{destinationPath}</p>
             </div>
           </div>
-          {isSaved && onRemoveDestination && !confirmingRemove && (
+          {isSaved && onRemoveDestination && !confirmingRemove && !isSyncing && (
             <button
               onClick={() => setConfirmingRemove(true)}
               className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
@@ -164,6 +174,15 @@ export function DeviceSyncPanel({
             </button>
           )}
         </div>
+
+        {/* Filesystem badge */}
+        {filesystemType !== 'unknown' && (
+          <div className={`flex items-center gap-2 mb-4 px-3 py-2 rounded-lg text-xs ${isFat32 ? 'bg-yellow-900/30 border border-yellow-700/40 text-yellow-300' : 'bg-jf-bg-mid border border-jf-border text-zinc-500'}`}>
+            <span className={`font-mono font-semibold ${isFat32 ? 'text-yellow-400' : ''}`}>{fsLabel[filesystemType] ?? filesystemType.toUpperCase()}</span>
+            {isFat32 && <span>· Filenames will be sanitized for FAT32 compatibility (trailing dots/spaces removed, reserved names prefixed)</span>}
+            {isExFat && <span>· exFAT — no file size limit, compatible with most devices</span>}
+          </div>
+        )}
 
         {/* Confirm remove */}
         {confirmingRemove && (
@@ -218,8 +237,9 @@ export function DeviceSyncPanel({
                       {items.map(item => (
                         <button
                           key={item.id}
-                          onClick={() => onToggleItem(item.id)}
-                          className="w-full flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-zinc-800 transition-colors text-left group"
+                          onClick={() => !isSyncing && onToggleItem(item.id)}
+                          disabled={isSyncing}
+                          className="w-full flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-zinc-800 disabled:hover:bg-transparent disabled:cursor-default transition-colors text-left group"
                         >
                           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATE_COLOR[item.state]}`} />
                           <span className={`flex-1 truncate ${item.state === 'remove' ? 'line-through opacity-50' : ''}`}>
@@ -255,7 +275,8 @@ export function DeviceSyncPanel({
             </div>
             <button
               onClick={onToggleConvert}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${convertToMp3 ? 'bg-jf-purple' : 'bg-zinc-600'}`}
+              disabled={isSyncing}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-default ${convertToMp3 ? 'bg-jf-purple' : 'bg-zinc-600'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${convertToMp3 ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -267,7 +288,8 @@ export function DeviceSyncPanel({
                 <button
                   key={b}
                   onClick={() => onBitrateChange(b)}
-                  className={`px-2.5 py-1 text-xs rounded-lg ${bitrate === b ? 'bg-jf-purple text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'}`}
+                  disabled={isSyncing}
+                  className={`px-2.5 py-1 text-xs rounded-lg disabled:cursor-default disabled:opacity-50 ${bitrate === b ? 'bg-jf-purple text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'}`}
                 >
                   {b}
                 </button>

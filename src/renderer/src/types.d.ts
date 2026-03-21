@@ -48,6 +48,7 @@ interface SyncProgress {
 interface Api {
   listUsbDevices: () => Promise<UsbDevice[]>
   getDeviceInfo: (devicePath: string) => Promise<DeviceInfo>
+  getFilesystem: (devicePath: string) => Promise<string>
   getTrackSize: (trackPath: string) => Promise<number>
   getTrackFormat: (trackPath: string) => Promise<string>
   onUsbAttach: (callback: () => void) => (() => void) | undefined

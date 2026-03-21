@@ -139,6 +139,47 @@ async function getDeviceInfo(devicePath: string): Promise<DeviceInfo> {
   return { total: 0, free: 0, used: 0 }
 }
 
+async function detectFilesystem(devicePath: string): Promise<string> {
+  try {
+    const { execSync } = require('child_process')
+    const platform = process.platform
+    if (platform === 'darwin') {
+      const output: string = execSync(`diskutil info "${devicePath}"`, { encoding: 'utf8', timeout: 5000 })
+      const match = output.match(/File System Personality\s*:\s*(.+)/i)
+      if (match) {
+        const t = match[1].trim().toLowerCase()
+        if (t.includes('fat32') || t === 'ms-dos fat32' || t === 'msdos') return 'fat32'
+        if (t.includes('exfat')) return 'exfat'
+        if (t.includes('ntfs')) return 'ntfs'
+        if (t.includes('apfs')) return 'apfs'
+        if (t.includes('hfs')) return 'hfs+'
+      }
+    } else if (platform === 'linux') {
+      const output: string = execSync(`df -T "${devicePath}" 2>/dev/null | tail -1`, { encoding: 'utf8', timeout: 5000 })
+      const parts = output.trim().split(/\s+/)
+      if (parts.length >= 2) {
+        const t = parts[1].toLowerCase()
+        if (t === 'vfat' || t === 'fat32' || t === 'msdos') return 'fat32'
+        if (t === 'exfat') return 'exfat'
+        if (t === 'ntfs' || t === 'ntfs-3g' || t === 'fuseblk') return 'ntfs'
+        if (t === 'ext4' || t === 'ext3' || t === 'ext2' || t === 'btrfs' || t === 'xfs') return 'ext4'
+        if (t === 'apfs') return 'apfs'
+      }
+    } else if (platform === 'win32') {
+      const driveLetter = devicePath.charAt(0)
+      const output: string = execSync(`wmic logicaldisk where "caption='${driveLetter}:'" get filesystem /format:csv`, { encoding: 'utf8', timeout: 5000 })
+      const lines = output.split('\n').filter((l: string) => l.trim() && !l.toLowerCase().includes('filesystem'))
+      if (lines.length > 0) {
+        const t = (lines[lines.length - 1].split(',').pop() ?? '').trim().toLowerCase()
+        if (t === 'fat32') return 'fat32'
+        if (t === 'exfat') return 'exfat'
+        if (t === 'ntfs') return 'ntfs'
+      }
+    }
+  } catch (e) { log.warn('Filesystem detection error:', e) }
+  return 'unknown'
+}
+
 function getTrackSize(filePath: string): number {
   try {
     const stats = fs.statSync(filePath)
@@ -345,6 +386,9 @@ ipcMain.handle('usb:list', async () => { try { return await listUsbDevices() } c
 ipcMain.handle('usb:getDeviceInfo', async (_event, devicePath: string) => { try { return await getDeviceInfo(devicePath) } catch (error) { log.error('Error getting device info:', error); return { total: 0, free: 0, used: 0 } } })
 ipcMain.handle('usb:getTrackSize', async (_event, trackPath: string) => getTrackSize(trackPath))
 ipcMain.handle('usb:getTrackFormat', async (_event, trackPath: string) => detectAudioFormat(trackPath))
+ipcMain.handle('device:getFilesystem', async (_event, devicePath: string) => {
+  try { return await detectFilesystem(devicePath) } catch (e) { return 'unknown' }
+})
 ipcMain.handle('sync:start', async (event, options) => {
   try {
     log.info(`Starting sync to ${options.targetPath} with ${options.tracks.length} tracks`)
@@ -384,10 +428,14 @@ ipcMain.handle('sync:start2', async (event, options) => {
       userId,
       // serverRootPath will be auto-detected from tracks during sync
     })
-    
+
     // Convert itemTypes to Map if needed
     const itemTypesMap = itemTypes instanceof Map ? itemTypes : new Map(Object.entries(itemTypes))
-    
+
+    // Detect destination filesystem for path sanitization
+    const filesystemType = await detectFilesystem(destinationPath)
+    log.info(`Destination filesystem: ${filesystemType}`)
+
     // Run sync with progress callback that maps to renderer format
     const result = await syncCore.sync(
       {
@@ -397,6 +445,7 @@ ipcMain.handle('sync:start2', async (event, options) => {
         options: {
           preserveStructure: true,
           skipExisting: true,
+          filesystemType,
           ...syncOptions,
         },
       },
