@@ -56,10 +56,10 @@ else
   RELEASE_NOTES_FLAG=(--generate-notes)
 fi
 
-# Collect release assets
+# Collect release assets — only DMG and source ZIP for this version
 RELEASE_DIR="release"
 ASSETS=()
-for file in "$RELEASE_DIR"/*.{dmg,zip,exe,AppImage,deb}; do
+for file in "$RELEASE_DIR"/*-"$NEW_VERSION"-mac.dmg "$RELEASE_DIR"/*-"$NEW_VERSION"-mac.zip; do
   [[ -f "$file" ]] && ASSETS+=("$file")
 done
 
