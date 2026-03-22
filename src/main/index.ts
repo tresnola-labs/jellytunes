@@ -479,20 +479,37 @@ ipcMain.handle('bug:report', async () => {
     }
 
     const body = [
-      `**App version:** ${app.getVersion()}`,
-      `**OS:** ${process.platform} ${os.release()}`,
-      `**Node:** ${process.version}`,
+      `**Describe the bug**`,
+      `A clear and concise description of what the bug is.`,
       ``,
-      `**Recent log:**`,
+      `**To Reproduce**`,
+      `Steps to reproduce the behavior:`,
+      `1. Go to '...'`,
+      `2. Click on '...'`,
+      `3. See error`,
+      ``,
+      `**Expected behavior**`,
+      `A clear and concise description of what you expected to happen.`,
+      ``,
+      `**Screenshots**`,
+      `If applicable, add screenshots to help explain your problem.`,
+      ``,
+      `**Desktop (please complete the following information):**`,
+      ` - OS: ${process.platform} ${os.release()}`,
+      ` - JellyTunes version: ${app.getVersion()}`,
+      ` - Jellyfin server version: [e.g. 10.9.0]`,
+      ``,
+      `**Log output**`,
       '```',
       logExcerpt,
       '```',
       ``,
-      `**What happened:**`,
-      `<!-- describe what you were doing when the error occurred -->`,
+      `**Additional context**`,
+      `Add any other context about the problem here.`,
     ].join('\n')
 
     const url = `https://github.com/oriaflow-labs/jellytunes/issues/new?` +
+      `labels=${encodeURIComponent('bug')}&` +
       `title=${encodeURIComponent('Bug report')}&` +
       `body=${encodeURIComponent(body)}`
 
