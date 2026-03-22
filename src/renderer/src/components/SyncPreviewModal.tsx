@@ -12,7 +12,7 @@ interface SyncPreviewModalProps {
 export function SyncPreviewModal({ data, convertToMp3, bitrate, onCancel, onConfirm }: SyncPreviewModalProps): JSX.Element {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onCancel}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div data-testid="sync-preview-modal" className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Check className="w-5 h-5 text-jf-cyan" />
           Sync Preview
@@ -20,11 +20,11 @@ export function SyncPreviewModal({ data, convertToMp3, bitrate, onCancel, onConf
         <div className="space-y-3 mb-6">
           <div className="flex justify-between text-sm">
             <span className="text-zinc-400">Tracks to sync</span>
-            <span className="font-medium">{data.trackCount.toLocaleString()}</span>
+            <span data-testid="preview-track-count" className="font-medium">{data.trackCount.toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-zinc-400">Total size</span>
-            <span className="font-medium">{(data.totalBytes / 1024 / 1024 / 1024).toFixed(2)} GB</span>
+            <span data-testid="preview-total-size" className="font-medium">{(data.totalBytes / 1024 / 1024 / 1024).toFixed(2)} GB</span>
           </div>
           {data.alreadySyncedCount > 0 && (
             <div className="flex justify-between text-sm">
@@ -58,12 +58,14 @@ export function SyncPreviewModal({ data, convertToMp3, bitrate, onCancel, onConf
         </div>
         <div className="flex gap-3">
           <button
+            data-testid="cancel-preview-button"
             onClick={onCancel}
             className="flex-1 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition-colors"
           >
             Cancel
           </button>
           <button
+            data-testid="confirm-sync-button"
             onClick={onConfirm}
             className="flex-1 py-2 rounded-lg bg-jf-purple hover:bg-jf-purple-dark text-sm font-medium transition-colors"
           >

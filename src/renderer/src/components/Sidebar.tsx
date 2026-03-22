@@ -94,6 +94,7 @@ export function Sidebar({
         <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2 flex items-center justify-between">
           Devices
           <button
+            data-testid="refresh-devices-button"
             onClick={onRefreshDevices}
             className="p-0.5 text-zinc-600 hover:text-zinc-400 transition-colors"
             title="Refresh devices"
@@ -106,6 +107,8 @@ export function Sidebar({
           {mountedUsb.map(({ name, path }) => (
             <button
               key={path}
+              data-testid="device-item"
+              data-device-path={path}
               onClick={() => onDestinationClick(path)}
               className={destClass(path)}
             >
@@ -118,6 +121,8 @@ export function Sidebar({
           {savedDestinations.map(dest => (
             <button
               key={dest.id}
+              data-testid="device-item"
+              data-device-path={dest.path}
               onClick={() => onDestinationClick(dest.path)}
               className={destClass(dest.path)}
             >
@@ -129,6 +134,7 @@ export function Sidebar({
           {/* Separator + Add folder */}
           {hasAnyDestination && <div className="border-t border-jf-border my-1" />}
           <button
+            data-testid="add-folder-button"
             onClick={onAddFolder}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
           >

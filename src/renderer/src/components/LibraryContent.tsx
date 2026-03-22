@@ -160,6 +160,7 @@ export function LibraryContent({
                 {(['all', 'selected', 'unselected'] as SyncFilter[]).map(f => (
                   <button
                     key={f}
+                    data-testid={`sync-filter-${f}`}
                     onClick={() => applyFilter(f)}
                     className={`px-3 py-1 rounded-md transition-colors ${syncFilter === f ? 'bg-jf-purple/40 text-jf-purple-light' : 'text-zinc-400 hover:text-zinc-200'}`}
                   >
@@ -174,6 +175,7 @@ export function LibraryContent({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
             <input
+              data-testid="search-input"
               type="text"
               placeholder={`Search ${tabLabel}...`}
               value={searchQuery}
@@ -197,12 +199,12 @@ export function LibraryContent({
             </span>
             <div className="flex gap-3">
               {!isSearchActive && (
-                <button onClick={activeDeviceName ? onSelectAll : () => { setNoDeviceHint(true); setTimeout(() => setNoDeviceHint(false), 2500) }} className="text-xs text-jf-purple hover:text-jf-purple-light">
+                <button data-testid="select-all-button" onClick={activeDeviceName ? onSelectAll : () => { setNoDeviceHint(true); setTimeout(() => setNoDeviceHint(false), 2500) }} className="text-xs text-jf-purple hover:text-jf-purple-light">
                   Select all
                 </button>
               )}
               {selectedTracks.size > 0 && (
-                <button onClick={onClearSelection} className="text-xs text-zinc-500 hover:text-zinc-300">
+                <button data-testid="clear-selection-button" onClick={onClearSelection} className="text-xs text-zinc-500 hover:text-zinc-300">
                   Clear
                 </button>
               )}
@@ -224,7 +226,7 @@ export function LibraryContent({
         )}
 
         {isSearchActive && isSearching ? (
-          <div className="flex items-center gap-2 text-zinc-500 text-sm py-8 justify-center">
+          <div data-testid="library-loading" className="flex items-center gap-2 text-zinc-500 text-sm py-8 justify-center">
             <Loader2 className="w-4 h-4 animate-spin" />
             Searching {tabLabel}...
           </div>
@@ -233,7 +235,7 @@ export function LibraryContent({
             Search failed: {searchError}
           </p>
         ) : isSearchActive && !hasResults ? (
-          <p className="text-zinc-500 text-sm py-8 text-center">
+          <p data-testid="library-empty" className="text-zinc-500 text-sm py-8 text-center">
             No {tabLabel} found for "{searchQuery}"
           </p>
         ) : (

@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
+import { logger } from '@/utils/logger'
 
 interface Props {
   children: ReactNode
@@ -20,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('Unhandled React error:', error, info.componentStack)
+    logger.error(`Unhandled React error: ${error.message}${info.componentStack ? ` — ${info.componentStack.split('\n')[1]?.trim()}` : ''}`)
   }
 
   render() {

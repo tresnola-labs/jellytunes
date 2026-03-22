@@ -50,7 +50,7 @@ export function createProgressEmitter(): ProgressEmitter {
         try {
           callback(progress);
         } catch (error) {
-          console.error('Progress callback error:', error);
+          // Swallow callback errors silently — log is not available in this module
         }
       }
     },

@@ -52,6 +52,9 @@ export function LibraryItem({ item, type, isSelected, wasSynced, onToggle, serve
 
   return (
     <div
+      data-testid="library-item"
+      data-item-id={item.Id}
+      data-item-type={type}
       onClick={() => onToggle(item.Id)}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-jf-purple/15 border border-jf-purple/30 hover:bg-jf-purple/20' : willDelete ? 'border border-red-800/40 hover:bg-[#1e2836]' : 'border border-transparent hover:bg-[#1e2836]'}`}
     >

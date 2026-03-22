@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { JellyfinConfig, Artist, Album, Playlist, PaginationState, LibraryStats, LibraryTab, ItemTypeIndex } from '../appTypes'
 import { jellyfinHeaders, buildUrl, PAGE_SIZE } from '../utils/jellyfin'
+import { logger } from '../utils/logger'
 
 export function useLibrary(jellyfinConfig: JellyfinConfig | null, userId: string | null) {
   const [artists, setArtists] = useState<Artist[]>([])
@@ -108,7 +109,7 @@ export function useLibrary(jellyfinConfig: JellyfinConfig | null, userId: string
         artists: { items, total: data.TotalRecordCount || items.length, startIndex: PAGE_SIZE, hasMore: items.length < (data.TotalRecordCount || items.length), scrollPos: 0 },
       }))
     } catch (e) {
-      console.error('Failed to load artists:', e)
+      logger.error('Failed to load artists: ' + (e instanceof Error ? e.message : String(e)))
       setError('Error loading artists')
       setArtists([])
     }
@@ -126,7 +127,7 @@ export function useLibrary(jellyfinConfig: JellyfinConfig | null, userId: string
         albums: { items, total: data.TotalRecordCount || items.length, startIndex: PAGE_SIZE, hasMore: items.length < (data.TotalRecordCount || items.length), scrollPos: 0 },
       }))
     } catch (e) {
-      console.error('Failed to load albums:', e)
+      logger.error('Failed to load albums: ' + (e instanceof Error ? e.message : String(e)))
       setAlbums([])
     }
 
@@ -143,7 +144,7 @@ export function useLibrary(jellyfinConfig: JellyfinConfig | null, userId: string
         playlists: { items, total: data.TotalRecordCount || items.length, startIndex: PAGE_SIZE, hasMore: items.length < (data.TotalRecordCount || items.length), scrollPos: 0 },
       }))
     } catch (e) {
-      console.error('Failed to load playlists:', e)
+      logger.error('Failed to load playlists: ' + (e instanceof Error ? e.message : String(e)))
       setPlaylists([])
     }
   }
@@ -201,7 +202,7 @@ export function useLibrary(jellyfinConfig: JellyfinConfig | null, userId: string
       }
       setLoadedTabs(prev => new Set(prev).add(tab))
     } catch (e) {
-      console.error(`Failed to load ${tab}:`, e)
+      logger.error(`Failed to load ${tab}: ` + (e instanceof Error ? e.message : String(e)))
     }
   }
 
@@ -243,7 +244,7 @@ export function useLibrary(jellyfinConfig: JellyfinConfig | null, userId: string
         },
       }))
     } catch (e) {
-      console.error(`Failed to load more ${type}:`, e)
+      logger.error(`Failed to load more ${type}: ` + (e instanceof Error ? e.message : String(e)))
       setError(e instanceof Error ? e.message : `Failed to load more ${type}`)
     } finally {
       setIsLoadingMore(false)

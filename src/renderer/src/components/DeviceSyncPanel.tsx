@@ -161,7 +161,7 @@ export function DeviceSyncPanel({
 
   return (
     <>
-      <div className="flex-1 overflow-auto p-6 max-w-2xl">
+      <div data-testid="sync-panel" className="flex-1 overflow-auto p-6 max-w-2xl">
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -208,7 +208,7 @@ export function DeviceSyncPanel({
         {loadingInfo ? (
           <div className="bg-jf-bg-mid rounded-xl p-4 border border-jf-border mb-4 h-16 animate-pulse" />
         ) : deviceInfo ? (
-          <div className="bg-jf-bg-mid rounded-xl p-4 border border-jf-border mb-4">
+          <div data-testid="storage-bar" className="bg-jf-bg-mid rounded-xl p-4 border border-jf-border mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-zinc-400">Storage</span>
               <span className="text-zinc-300">{formatBytes(deviceInfo.free)} free of {formatBytes(deviceInfo.total)}</span>
@@ -283,6 +283,7 @@ export function DeviceSyncPanel({
               </p>
             </div>
             <button
+              data-testid="mp3-toggle"
               onClick={onToggleConvert}
               disabled={isSyncing}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-default ${convertToMp3 ? 'bg-jf-purple' : 'bg-zinc-600'}`}
@@ -309,6 +310,7 @@ export function DeviceSyncPanel({
 
         {/* Sync button */}
         <button
+          data-testid="sync-button"
           onClick={onStartSync}
           disabled={isSyncing || isLoadingPreview || syncItems.length === 0}
           className="w-full bg-jf-purple hover:bg-jf-purple-dark disabled:bg-zinc-700 disabled:text-zinc-500 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
@@ -328,7 +330,7 @@ export function DeviceSyncPanel({
               <span className="text-zinc-400">Progress</span>
               <span>{syncProgress.current} / {syncProgress.total}</span>
             </div>
-            <div className="w-full bg-[#2a3a4d] rounded-full h-1.5 mb-2">
+            <div data-testid="sync-progress-bar" className="w-full bg-[#2a3a4d] rounded-full h-1.5 mb-2">
               <div
                 className="bg-jf-purple h-1.5 rounded-full transition-all"
                 style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}

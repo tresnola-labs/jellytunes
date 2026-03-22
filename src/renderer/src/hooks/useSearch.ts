@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { JellyfinConfig, Artist, Album, Playlist } from '../appTypes'
 import { jellyfinHeaders } from '../utils/jellyfin'
+import { logger } from '../utils/logger'
 
 interface SearchResults {
   artists: Artist[]
@@ -44,7 +45,7 @@ export function useSearch(jellyfinConfig: JellyfinConfig | null, userId: string 
           playlists: playlistsData.Items ?? [],
         })
       } catch (e) {
-        console.error('Search error:', e)
+        logger.error('Search error: ' + (e instanceof Error ? e.message : String(e)))
         setSearchResults(null)
         setSearchError(e instanceof Error ? e.message : 'Search failed. Check your connection.')
       } finally {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { JellyfinConfig, Artist, Album, Playlist, Bitrate, SyncProgressInfo, PreviewData } from '../appTypes'
 import type { SyncedItemInfo } from './useDeviceSelections'
+import { logger } from '../utils/logger'
 
 interface UseSyncOptions {
   jellyfinConfig: JellyfinConfig | null
@@ -141,7 +142,7 @@ export function useSync({
       }
     } catch (error) {
       unsubscribe?.()
-      console.error('Sync error:', error)
+      logger.error('Sync error: ' + (error instanceof Error ? error.message : String(error)))
       setSyncProgress(null)
       setIsSyncing(false)
       alert('Sync error: ' + (error instanceof Error ? error.message : String(error)))
@@ -179,7 +180,7 @@ export function useSync({
       setPreviewData({ ...estimate, alreadySyncedCount, willRemoveCount })
       setShowPreview(true)
     } catch (err) {
-      console.warn('Size estimation failed, proceeding without preview:', err)
+      logger.warn('Size estimation failed, proceeding without preview: ' + (err instanceof Error ? err.message : String(err)))
       executeSyncNow()
     } finally {
       setIsLoadingPreview(false)
