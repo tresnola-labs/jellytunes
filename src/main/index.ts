@@ -1,9 +1,9 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import log from 'electron-log'
 import { spawn, spawnSync } from 'child_process'
 import * as fs from 'fs'
+import * as os from 'os'
 
 // Import new sync module
 import { createSyncCore, createValidatedConfig, validateDestination, createNodeFileSystem } from '../sync'
@@ -11,7 +11,9 @@ import { createSyncCore, createValidatedConfig, validateDestination, createNodeF
 // Import database
 import { initDatabase, recordSyncCompleted, getSyncedItemIds, getSyncedItems, getDeviceSyncInfo, getRecentSyncHistory, removeSyncedItems } from './database'
 
-log.transports.file.level = 'info'
+// Configure logger before anything else
+import { configureLogger, log } from './logger'
+configureLogger()
 log.info('JellyTunes starting...')
 
 let mainWindow: BrowserWindow | null = null
@@ -447,6 +449,60 @@ function isValidPath(p: unknown): p is string {
   const isAbsolute = p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p) || p.startsWith('\\\\')
   return isAbsolute
 }
+
+// Renderer logging — forward renderer-side errors/warnings to the main log file
+// Only level and a sanitized message are accepted (no raw objects to avoid leaking PII)
+ipcMain.on('log:write', (_event, level: string, message: string) => {
+  if (typeof message !== 'string') return
+  const safe = message.slice(0, 500) // hard cap to prevent log flooding
+  switch (level) {
+    case 'error': log.error('[renderer]', safe); break
+    case 'warn':  log.warn('[renderer]', safe); break
+    default:      log.info('[renderer]', safe)
+  }
+})
+
+// Expose log file path so the user can open/inspect it (transparency)
+ipcMain.handle('log:getPath', () => log.transports.file.getFile().path)
+
+// Open pre-filled GitHub bug report in the system browser
+ipcMain.handle('bug:report', async () => {
+  try {
+    const logPath = log.transports.file.getFile().path
+    let logExcerpt = '(log file not found)'
+    if (fs.existsSync(logPath)) {
+      const content = fs.readFileSync(logPath, 'utf-8')
+      const lines = content.split('\n').filter(Boolean)
+      const errorLines = lines.filter(l => l.includes('[error]') || l.includes('[warn]')).slice(-15)
+      const recentLines = lines.slice(-10)
+      logExcerpt = [...new Set([...errorLines, ...recentLines])].slice(-25).join('\n')
+    }
+
+    const body = [
+      `**App version:** ${app.getVersion()}`,
+      `**OS:** ${process.platform} ${os.release()}`,
+      `**Node:** ${process.version}`,
+      ``,
+      `**Recent log:**`,
+      '```',
+      logExcerpt,
+      '```',
+      ``,
+      `**What happened:**`,
+      `<!-- describe what you were doing when the error occurred -->`,
+    ].join('\n')
+
+    const url = `https://github.com/oriaflow-labs/jellytunes/issues/new?` +
+      `title=${encodeURIComponent('Bug report')}&` +
+      `body=${encodeURIComponent(body)}`
+
+    await shell.openExternal(url)
+    return { success: true }
+  } catch (e) {
+    log.error('bug:report error:', e)
+    return { success: false, error: String(e) }
+  }
+})
 
 ipcMain.handle('usb:list', async () => { try { return await listUsbDevices() } catch (error) { log.error('Error in usb:list handler:', error); return [] } })
 ipcMain.handle('usb:getDeviceInfo', async (_event, devicePath: string) => {

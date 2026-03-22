@@ -93,6 +93,11 @@ interface Api {
   saveSession: (data: string) => Promise<void>
   loadSession: () => Promise<string | null>
   clearSession: () => Promise<void>
+  logError: (message: string) => void
+  logWarn: (message: string) => void
+  logInfo: (message: string) => void
+  getLogPath: () => Promise<string>
+  reportBug: () => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

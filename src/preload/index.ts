@@ -145,6 +145,17 @@ const api = {
 
   clearSession: (): Promise<void> =>
     ipcRenderer.invoke('session:clear'),
+
+  // Logging — write renderer errors/warnings to the main process log file
+  logError: (message: string): void => ipcRenderer.send('log:write', 'error', message),
+  logWarn: (message: string): void => ipcRenderer.send('log:write', 'warn', message),
+  logInfo: (message: string): void => ipcRenderer.send('log:write', 'info', message),
+
+  // Return the local log file path (shown to the user for transparency)
+  getLogPath: (): Promise<string> => ipcRenderer.invoke('log:getPath'),
+
+  // Open a pre-filled GitHub issue in the browser with recent log lines
+  reportBug: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('bug:report'),
 }
 
 if (process.contextIsolated) {
@@ -152,7 +163,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
-    console.error(error)
+    // contextBridge setup failed — nothing we can do here, app will not function
   }
 } else {
   // @ts-ignore
