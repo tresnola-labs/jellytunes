@@ -88,7 +88,7 @@
     ],
     "mac": {
       "target": [
-        "dmg"
+        { "target": "dmg", "arch": ["universal"] }
       ],
       "icon": "assets/icon.icns",
       "compression": "maximum",
