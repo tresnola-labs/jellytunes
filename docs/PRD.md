@@ -1,7 +1,7 @@
-# PRD - Jellysync
+# PRD - JellyTunes
 
 **Product Owner:** NexusPO  
-**Proyecto:** Jellysync - Sincronizador de música Jellyfin → dispositivos  
+**Proyecto:** JellyTunes - Sincronizador de música Jellyfin → dispositivos  
 **Fecha:** 2026-03-12  
 **Versión:** 1.0
 
@@ -9,7 +9,7 @@
 
 ## 🎯 Visión del Producto
 
-**Jellysync** es una aplicación desktop para sincronizar bibliotecas de música desde Jellyfin a dispositivos reproductores MP3/FLAC (USB, SD, etc.).
+**JellyTunes** es una aplicación desktop para sincronizar bibliotecas de música desde Jellyfin a dispositivos reproductores MP3/FLAC (USB, SD, etc.).
 
 **Propuesta de valor:** Gestión inteligente de música offline con filtros avanzados, conversión de formato automática y sincronización selectiva.
 
@@ -83,7 +83,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Jellysync                              [⚙️] [👤]  │
+│  JellyTunes                              [⚙️] [👤]  │
 ├─────────────────────────────────────────────────────┤
 │  [🔍 Buscar...                      ]               │
 ├──────────────┬──────────────────────────────────────┤

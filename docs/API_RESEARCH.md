@@ -79,7 +79,7 @@ Body: { "Username": "usuario", "Pw": "contraseña" }
 
 ---
 
-## Implementación Recomendada para Jellysync
+## Implementación Recomendada para JellyTunes
 
 ### Opción 1: Listar usuarios y tomar el admin (RECOMENDADA)
 

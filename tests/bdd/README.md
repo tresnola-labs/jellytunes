@@ -1,6 +1,6 @@
-# Jellysync - Tests BDD
+# JellyTunes - Tests BDD
 
-Suite de tests BDD (Behavior-Driven Development) para Jellysync usando Cucumber + Playwright.
+Suite de tests BDD (Behavior-Driven Development) para JellyTunes usando Cucumber + Playwright.
 
 ## Estructura
 

@@ -103,7 +103,7 @@ if ! pgrep -x "Xvfb" > /dev/null; then
 fi
 
 # Compilar y ejecutar tests
-cd /path/to/jellysync
+cd /path/to/jellytunes
 pnpm build
 pnpm test:bdd:ci
 
@@ -187,7 +187,7 @@ if ! system_profiler SPDisplaysDataType | grep -q "Display"; then
 fi
 
 # Ejecutar tests
-cd /path/to/jellysync
+cd /path/to/jellytunes
 pnpm build
 pnpm test:bdd
 ```
@@ -299,7 +299,7 @@ exec "$@"
 version: '3.8'
 
 services:
-  jellysync-test:
+  jellytunes-test:
     build:
       context: .
       dockerfile: Dockerfile.test
@@ -315,17 +315,17 @@ services:
 
 ```bash
 # Construir imagen
-docker build -t jellysync-test -f Dockerfile.test .
+docker build -t jellytunes-test -f Dockerfile.test .
 
 # Ejecutar tests
 docker run --rm \
     -v $(pwd)/tests/bdd/screenshots:/app/tests/bdd/screenshots \
     -v $(pwd)/tests/bdd/reports:/app/tests/bdd/reports \
-    jellysync-test \
+    jellytunes-test \
     pnpm test:bdd:ci
 
 # O con docker-compose
-docker-compose up --rm jellysync-test
+docker-compose up --rm jellytunes-test
 ```
 
 ---
@@ -371,7 +371,7 @@ import * as fs from 'fs';
 export async function launchApp(headless?: boolean): Promise<ElectronApplication> {
   const projectPath = path.resolve(__dirname, '../../../');
   const electronPath = getElectronPath();  
-  const isPackaged = electronPath.includes('Jellysync.app');
+  const isPackaged = electronPath.includes('JellyTunes.app');
   
   // Detectar si hay display disponible
   const hasDisplay = process.env.DISPLAY || process.env.WAYLAND_DISPLAY;
@@ -404,7 +404,7 @@ export async function launchApp(headless?: boolean): Promise<ElectronApplication
 
 ---
 
-## Integración con Tests Actuales de Jellysync
+## Integración con Tests Actuales de JellyTunes
 
 ### Modificación de cucumber.js
 
@@ -448,7 +448,7 @@ module.exports = config;
 {
   "scripts": {
     "test:bdd:ci": "xvfb-run -a --server-args=\"-screen 0 1920x1080x24\" pnpm test:bdd",
-    "test:bdd:docker": "docker-compose up --rm jellysync-test"
+    "test:bdd:docker": "docker-compose up --rm jellytunes-test"
   }
 }
 ```
@@ -662,5 +662,5 @@ default: {
 
 ---
 
-*Documento creado para TicoQA - Jellysync Testing*
+*Documento creado para TicoQA - JellyTunes Testing*
 *Fecha: 2026-03-13*

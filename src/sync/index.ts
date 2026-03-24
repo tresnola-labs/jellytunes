@@ -1,5 +1,5 @@
 /**
- * Jellysync Sync Module
+ * JellyTunes Sync Module
  * 
  * Public API for the synchronization module.
  * 

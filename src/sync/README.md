@@ -1,8 +1,8 @@
-# Jellysync Sync Module Documentation
+# JellyTunes Sync Module Documentation
 
 ## Overview
 
-This module provides a **testable, UI-agnostic synchronization core** for Jellysync. It handles all operations related to syncing music from a Jellyfin server to a local destination (USB drive, external HDD, etc.).
+This module provides a **testable, UI-agnostic synchronization core** for JellyTunes. It handles all operations related to syncing music from a Jellyfin server to a local destination (USB drive, external HDD, etc.).
 
 ## Architecture
 

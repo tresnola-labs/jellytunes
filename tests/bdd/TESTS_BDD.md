@@ -1,6 +1,6 @@
-# Tests BDD para Jellysync
+# Tests BDD para JellyTunes
 
-Este directorio contiene la suite de tests BDD (Behavior-Driven Development) para Jellysync.
+Este directorio contiene la suite de tests BDD (Behavior-Driven Development) para JellyTunes.
 
 ## Estructura
 

@@ -10,7 +10,7 @@ function getElectronPath(): string {
   const projectPath = path.resolve(__dirname, '../../../');
   
   // Check for packaged app first
-  const macAppPath = path.join(projectPath, 'release/mac/Jellysync.app/Contents/MacOS/Jellysync');
+  const macAppPath = path.join(projectPath, 'release/mac/JellyTunes.app/Contents/MacOS/JellyTunes');
   if (fs.existsSync(macAppPath)) {
     return macAppPath;
   }
@@ -29,7 +29,7 @@ export async function launchApp(): Promise<ElectronApplication> {
   const projectPath = path.resolve(__dirname, '../../../');
   const electronPath = getElectronPath();
   
-  const isPackaged = electronPath.includes('Jellysync.app');
+  const isPackaged = electronPath.includes('JellyTunes.app');
   
   let args: string[] = [];
   let cwd = projectPath;

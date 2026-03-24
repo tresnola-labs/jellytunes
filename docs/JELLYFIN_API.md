@@ -1,6 +1,6 @@
 # Jellyfin API - Guía de Endpoints para Descarga de Música
 
-> **Proyecto:** Jellysync  
+> **Proyecto:** JellyTunes  
 > **Fecha:** 2026-03-14  
 > **Investigador:** Rastreator
 
@@ -379,4 +379,4 @@ GET /Users/{userId}/Items?ParentId={albumId}&startIndex=0&limit=50
 
 ---
 
-*Documentación generada por Rastreator para Jellysync*
+*Documentación generada por Rastreator para JellyTunes*

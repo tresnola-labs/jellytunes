@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Configuración de Playwright para tests E2E de Jellysync
+ * Configuración de Playwright para tests E2E de JellyTunes
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({

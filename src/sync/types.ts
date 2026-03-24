@@ -1,5 +1,5 @@
 /**
- * Jellysync Sync Module - Type Definitions
+ * JellyTunes Sync Module - Type Definitions
  * 
  * Core interfaces for the synchronization module.
  * These types define the public API contract.
