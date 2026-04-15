@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { JellyfinConfig, Artist, Album, Playlist, Bitrate, SyncProgressInfo, PreviewData } from '../appTypes'
 import type { SyncedItemInfo } from './useDeviceSelections'
+import { getTrackRegistry } from './useTrackRegistry'
 import { logger } from '../utils/logger'
 
 interface UseSyncOptions {
@@ -13,8 +14,6 @@ interface UseSyncOptions {
   albums: Album[]
   playlists: Playlist[]
   setPreviouslySyncedItems: (items: SyncedItemInfo[]) => void
-  /** Cached estimate from activateDevice for already-synced selected items */
-  cachedEstimatedSizeBytes: number | null
   revalidateDevice: () => Promise<void>
 }
 
@@ -28,9 +27,9 @@ export function useSync({
   albums,
   playlists,
   setPreviouslySyncedItems,
-  cachedEstimatedSizeBytes,
   revalidateDevice,
 }: UseSyncOptions) {
+  const registry = getTrackRegistry()
   const [syncFolder, setSyncFolder] = useState<string | null>(null)
   const [convertToMp3, setConvertToMp3] = useState(false)
   const [bitrate, setBitrate] = useState<Bitrate>('192k')
@@ -38,7 +37,7 @@ export function useSync({
   const [syncProgress, setSyncProgress] = useState<SyncProgressInfo | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [isLoadingPreview, _setIsLoadingPreview] = useState(false)
   const [syncSuccessData, setSyncSuccessData] = useState<{
     tracksCopied: number; tracksSkipped: number; tracksRetagged: number; removed: number; errors: string[]
   } | null>(null)
@@ -192,46 +191,22 @@ export function useSync({
       return
     }
 
-    const { artistIds, albumIds, playlistIds, map } = buildItemTypesMap()
+    const { artistIds, albumIds, playlistIds } = buildItemTypesMap()
     const selectedIds = [...artistIds, ...albumIds, ...playlistIds].filter(Boolean)
 
-    // Optimization: if all selected items are already synced and we have a cached estimate,
-    // skip the network call and use the cache directly
-    const allSelectedAlreadySynced = selectedIds.length > 0 && selectedIds.every(id => previouslySyncedItems.has(id))
-    const hasCachedEstimate = cachedEstimatedSizeBytes !== null && cachedEstimatedSizeBytes > 0
+    // Use registry for instant size calculation (no network call)
+    const totalBytes = registry.calculateSize(selectedTracks, syncFolder, convertToMp3, bitrate) ?? 0
+    const newTrackCount = registry.countNewTracks(selectedTracks, syncFolder)
+    const willRemoveCount = toDeleteIds.length
 
-    if (allSelectedAlreadySynced && hasCachedEstimate) {
-      // Use cached estimate - no need to fetch from server
-      const alreadySyncedCount = selectedIds.length
-      const willRemoveCount = [...previouslySyncedItems].filter(id => !selectedTracks.has(id)).length
-      setPreviewData({
-        trackCount: 0, // not available from cache, but not critical for display
-        totalBytes: cachedEstimatedSizeBytes,
-        formatBreakdown: {},
-        alreadySyncedCount,
-        willRemoveCount,
-      })
-      setShowPreview(true)
-      return
-    }
-
-    setIsLoadingPreview(true)
-    try {
-      const [estimate, syncedItems] = await Promise.all([
-        window.api.estimateSize({ serverUrl: jellyfinConfig.url, apiKey: jellyfinConfig.apiKey, userId, itemIds: selectedIds, itemTypes: map }),
-        window.api.getSyncedItems(syncFolder),
-      ])
-      const syncedIdSet = new Set(syncedItems.map(i => i.id))
-      const alreadySyncedCount = selectedIds.filter(id => syncedIdSet.has(id)).length
-      const willRemoveCount = [...previouslySyncedItems].filter(id => !selectedTracks.has(id)).length
-      setPreviewData({ ...estimate, alreadySyncedCount, willRemoveCount })
-      setShowPreview(true)
-    } catch (err) {
-      logger.warn('Size estimation failed, proceeding without preview: ' + (err instanceof Error ? err.message : String(err)))
-      executeSyncNow()
-    } finally {
-      setIsLoadingPreview(false)
-    }
+    setPreviewData({
+      trackCount: newTrackCount,
+      totalBytes,
+      formatBreakdown: {},
+      alreadySyncedCount: selectedIds.length - newTrackCount,
+      willRemoveCount,
+    })
+    setShowPreview(true)
   }
 
   const handleCancelSync = async (): Promise<void> => {

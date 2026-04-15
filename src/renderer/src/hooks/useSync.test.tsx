@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useSync } from './useSync'
@@ -24,13 +25,11 @@ const defaultProps = {
   albums: mockAlbums,
   playlists: mockPlaylists,
   setPreviouslySyncedItems: vi.fn(),
-  cachedEstimatedSizeBytes: null as number | null,
   revalidateDevice: vi.fn().mockResolvedValue(undefined),
 }
 
 const createMockApi = (overrides?: Record<string, ReturnType<typeof vi.fn>>) => ({
   selectFolder: vi.fn().mockResolvedValue('/Volumes/USB'),
-  estimateSize: vi.fn().mockResolvedValue({ trackCount: 5, totalBytes: 1_000_000, formatBreakdown: { mp3: 1_000_000 } }),
   getSyncedItems: vi.fn().mockResolvedValue([]),
   startSync2: vi.fn().mockResolvedValue({ success: true, tracksCopied: 5, tracksFailed: [], errors: [], tracksSkipped: 0 }),
   removeItems: vi.fn().mockResolvedValue({ removed: 0, errors: [] }),
@@ -61,7 +60,7 @@ describe('useSync', () => {
       expect(mockApi.startSync2).not.toHaveBeenCalled()
     })
 
-    it('calls estimateSize and shows preview when items are selected', async () => {
+    it('shows preview when items are selected (uses registry, not network)', async () => {
       const props = {
         ...defaultProps,
         selectedTracks: new Set(['artist-1', 'album-1']),
@@ -76,7 +75,6 @@ describe('useSync', () => {
         await result.current.handleStartSync()
       })
 
-      expect(mockApi.estimateSize).toHaveBeenCalled()
       expect(result.current.showPreview).toBe(true)
       expect(result.current.previewData).not.toBeNull()
     })

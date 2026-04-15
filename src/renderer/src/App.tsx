@@ -87,7 +87,6 @@ function App(): JSX.Element {
     artists: extArtists,
     albums: extAlbums,
     playlists: extPlaylists,
-    cachedEstimatedSizeBytes: deviceSelections.estimatedSizeBytes,
     revalidateDevice: deviceSelections.revalidateDevice,
     setPreviouslySyncedItems: (items) => {
       if (deviceSelections.activeDevicePath) {
@@ -95,38 +94,6 @@ function App(): JSX.Element {
       }
     },
   })
-
-  const selectedKey = JSON.stringify([...deviceSelections.selectedTracks].sort())
-
-  // Capture snapshot of previouslySyncedItems at effect-trigger time (before async call)
-  // to avoid stale closure when device switch and recalc race
-  const prevSyncedSnapshotRef = useRef<string[]>([])
-
-  // Recalculate storage estimate when selection changes (without full outOfSync analysis)
-  useEffect(() => {
-    const path = deviceSelections.activeDevicePath
-    if (!path || !connection.jellyfinConfig || !connection.userId) return
-    if (deviceSelections.isActivatingDevice) return // skip during activation — activateDevice already has correct syncedIds
-    const selected = deviceSelections.selectedTracks
-    const itemIds: string[] = []
-    const itemTypes: Record<string, 'artist' | 'album' | 'playlist'> = {}
-    for (const a of extArtists) { if (selected.has(a.Id)) { itemIds.push(a.Id); itemTypes[a.Id] = 'artist' } }
-    for (const a of extAlbums) { if (selected.has(a.Id)) { itemIds.push(a.Id); itemTypes[a.Id] = 'album' } }
-    for (const p of extPlaylists) { if (selected.has(p.Id)) { itemIds.push(p.Id); itemTypes[p.Id] = 'playlist' } }
-    // Snapshot now so the async call always uses the correct syncedIds for this trigger
-    const syncedIdsSnapshot = [...deviceSelections.previouslySyncedItems]
-    prevSyncedSnapshotRef.current = syncedIdsSnapshot
-    deviceSelections.recalculateSize({
-      serverUrl: connection.jellyfinConfig.url,
-      apiKey: connection.jellyfinConfig.apiKey,
-      userId: connection.userId,
-      itemIds,
-      itemTypes,
-      convertToMp3: sync.convertToMp3,
-      bitrate: sync.bitrate,
-      syncedIds: syncedIdsSnapshot,
-    })
-  }, [selectedKey, deviceSelections.activeDevicePath, deviceSelections.isActivatingDevice, sync.convertToMp3, sync.bitrate])
 
   // Bidirectional sync inference: artist ↔ albums
   const inferredSyncedItems = useMemo(() => {
@@ -330,8 +297,8 @@ function App(): JSX.Element {
           onRefreshDevices={refreshDevices}
           onRefreshLibrary={async () => {
             await lib.refreshLibrary()
-            // Re-run analyzeDiff to detect server-side changes and update out-of-sync indicators
-            await deviceSelections.revalidateDevice()
+            // Clear stale registry tracks and re-run analyzeDiff
+            await deviceSelections.onLibraryRefresh()
           }}
           onRemoveDestination={(path, deleteFiles, onDone) => handleRemoveDestination(path, deleteFiles, onDone)}
           isRemovingDestination={isRemovingDestination}
@@ -384,7 +351,6 @@ function App(): JSX.Element {
                 isSyncing={sync.isSyncing}
                 isLoadingPreview={sync.isLoadingPreview}
                 isActivatingDevice={deviceSelections.isActivatingDevice}
-                isCalculatingSize={deviceSelections.isCalculatingSize}
                 syncProgress={sync.syncProgress}
                 selectedTracks={deviceSelections.selectedTracks}
                 syncedItemsInfo={deviceSelections.syncedItemsInfo}
@@ -394,7 +360,6 @@ function App(): JSX.Element {
                 playlists={extPlaylists}
                 showPreview={sync.showPreview}
                 previewData={sync.previewData}
-                estimatedSizeBytes={deviceSelections.estimatedSizeBytes ?? undefined}
                 syncedMusicBytes={deviceSelections.syncedMusicBytes ?? undefined}
                 onToggleItem={deviceSelections.toggleItem}
                 onToggleConvert={() => sync.setConvertToMp3(v => !v)}

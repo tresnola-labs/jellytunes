@@ -57,7 +57,6 @@ function renderPanel(overrides: Partial<Parameters<typeof DeviceSyncPanel>[0]> =
     isSyncing: false,
     isLoadingPreview: false,
     isActivatingDevice: false,
-    isCalculatingSize: false,
     syncProgress: null,
     selectedTracks: new Set<string>(),
     syncedItemsInfo: [] as SyncedItemInfo[],
@@ -67,7 +66,6 @@ function renderPanel(overrides: Partial<Parameters<typeof DeviceSyncPanel>[0]> =
     playlists: defaultPlaylists,
     showPreview: false,
     previewData: null,
-    estimatedSizeBytes: undefined,
     onToggleItem: vi.fn(),
     onToggleConvert: vi.fn(),
     onBitrateChange: vi.fn(),
@@ -145,29 +143,6 @@ describe('DeviceSyncPanel', () => {
         artists: defaultArtists,
       })
       expect(screen.getByText(/new/i)).toBeInTheDocument()
-    })
-  })
-
-  describe('storage bar', () => {
-    it('shows storage bar with normal color when space is sufficient', async () => {
-      renderPanel({ estimatedSizeBytes: 1e9 })
-      await waitFor(() => {
-        expect(screen.getByTestId('storage-bar')).toBeInTheDocument()
-      })
-    })
-
-    it('shows "Not enough space" warning when space is insufficient', async () => {
-      renderPanel({ estimatedSizeBytes: 30e9 })
-      await waitFor(() => {
-        expect(screen.getByText(/not enough space/i)).toBeInTheDocument()
-      })
-    })
-
-    it('shows storage bar from device state before modal opens', async () => {
-      renderPanel({ estimatedSizeBytes: 1e9 })
-      await waitFor(() => {
-        expect(screen.getByTestId('storage-bar')).toBeInTheDocument()
-      })
     })
   })
 

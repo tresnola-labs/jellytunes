@@ -116,12 +116,21 @@ const api = {
   getFolderStats: (folderPath: string): Promise<{exists: boolean, isDirectory?: boolean, size?: number, modified?: string, error?: string}> =>
     ipcRenderer.invoke('fs:getFolderStats', folderPath),
 
-  estimateSize: (options: {
+  // Get synced tracks for a device from DB (for useTrackRegistry)
+  getSyncedTracks: (mountPoint: string): Promise<Array<{
+    trackId: string; itemId: string; fileSize: number; destinationPath: string
+  }>> =>
+    ipcRenderer.invoke('sync:getSyncedTracks', mountPoint),
+
+  // Fetch tracks for an item from Jellyfin (lazy loading for useTrackRegistry)
+  getTracksForItem: (options: {
     serverUrl: string; apiKey: string; userId: string
-    itemIds: string[]; itemTypes: Record<string, 'artist' | 'album' | 'playlist'>
-    convertToMp3?: boolean; bitrate?: string; syncedIds?: string[]
-  }): Promise<{ trackCount: number; totalBytes: number; formatBreakdown: Record<string, number>; syncedMusicBytes: number; newMusicBytes: number }> =>
-    ipcRenderer.invoke('sync:estimateSize', options),
+    itemId: string; itemType: 'artist' | 'album' | 'playlist'
+  }): Promise<{ tracks: Array<{
+    id: string; name: string; path: string; size?: number; format: string
+    bitrate?: number; album?: string; artists?: string[]; albumArtist?: string
+  }>; errors: string[] }> =>
+    ipcRenderer.invoke('sync:getTracksForItem', options),
 
   getDeviceSyncInfo: (mountPoint: string): Promise<{
     lastSync: string | null; totalTracks: number; totalBytes: number; syncCount: number

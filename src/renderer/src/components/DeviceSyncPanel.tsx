@@ -45,7 +45,6 @@ interface DeviceSyncPanelProps {
   isSyncing: boolean
   isLoadingPreview: boolean
   isActivatingDevice: boolean
-  isCalculatingSize: boolean
   syncProgress: SyncProgressInfo | null
   selectedTracks: Set<string>
   syncedItemsInfo: SyncedItemInfo[]
@@ -55,7 +54,6 @@ interface DeviceSyncPanelProps {
   playlists: Playlist[]
   showPreview: boolean
   previewData: PreviewData | null
-  estimatedSizeBytes?: number
   syncedMusicBytes?: number
   onToggleItem: (id: string) => void
   onToggleConvert: () => void
@@ -91,7 +89,6 @@ export function DeviceSyncPanel({
   isSyncing,
   isLoadingPreview,
   isActivatingDevice,
-  isCalculatingSize,
   syncProgress,
   selectedTracks,
   syncedItemsInfo,
@@ -101,7 +98,6 @@ export function DeviceSyncPanel({
   playlists,
   showPreview,
   previewData,
-  estimatedSizeBytes,
   syncedMusicBytes,
   onToggleItem,
   onToggleConvert,
@@ -233,7 +229,7 @@ export function DeviceSyncPanel({
         )}
 
         {/* Space bar */}
-        {loadingInfo || isActivatingDevice || isCalculatingSize ? (
+        {loadingInfo || isActivatingDevice ? (
           <div className="bg-surface_container_low rounded-xl p-4 border border-outline_variant mb-4">
             <div className="flex justify-between mb-2">
               <span className="text-label-md uppercase">Storage</span>
@@ -254,35 +250,17 @@ export function DeviceSyncPanel({
                 className="h-2 bg-secondary_container transition-all"
                 style={{ width: `${usedPct}%` }}
               />
-              {/* Projected segment — show early via estimatedSizeBytes, or late via previewData */}
-              {!isActivatingDevice && !isCalculatingSize && (previewData ?? (estimatedSizeBytes != null ? { totalBytes: estimatedSizeBytes } : null)) && (
-                <div
-                  className={`h-2 transition-all ${((previewData ?? { totalBytes: estimatedSizeBytes! }).totalBytes) > deviceInfo.free ? 'bg-error' : ((previewData ?? { totalBytes: estimatedSizeBytes! }).totalBytes) > deviceInfo.free * 0.9 ? 'bg-warning' : 'bg-tertiary_container'}`}
-                  style={{ width: `${Math.min((((previewData ?? { totalBytes: estimatedSizeBytes! }).totalBytes) / deviceInfo.total) * 100, 100 - usedPct!)}%` }}
-                />
-              )}
               {/* Free segment */}
               <div
                 className="h-2 bg-success transition-all"
-                style={{ width: `${Math.max(100 - usedPct! - (((previewData ?? (estimatedSizeBytes != null ? { totalBytes: estimatedSizeBytes } : null)) ? Math.min(((previewData ?? { totalBytes: estimatedSizeBytes ?? 0 }).totalBytes / deviceInfo.total) * 100, 100 - usedPct!) : 0)), 0)}%` }}
+                style={{ width: `${Math.max(100 - usedPct!, 0)}%` }}
               />
             </div>
-            {(previewData ?? (estimatedSizeBytes != null ? { totalBytes: estimatedSizeBytes } : null)) && (previewData ?? { totalBytes: estimatedSizeBytes! }).totalBytes > deviceInfo.free && (
-              <p className="text-warning text-caption mt-1.5 flex items-center gap-1">
-                ⚠ Not enough space
-              </p>
-            )}
             <div className="flex items-center gap-3 text-body-sm text-on_surface_variant mt-1.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-secondary_container" />
                 {otherFiles != null ? formatBytes(otherFiles) : '—'} Other
               </span>
-              {!isActivatingDevice && !isCalculatingSize && (previewData ?? (estimatedSizeBytes != null ? { totalBytes: estimatedSizeBytes } : null)) && (
-                <span className="flex items-center gap-1">
-                  <span className={`w-2 h-2 rounded-sm ${((previewData ?? { totalBytes: estimatedSizeBytes! }).totalBytes) > deviceInfo.free ? 'bg-error' : ((previewData ?? { totalBytes: estimatedSizeBytes! }).totalBytes) > deviceInfo.free * 0.9 ? 'bg-warning' : 'bg-tertiary_container'}`} />
-                  {formatBytes((previewData ?? { totalBytes: estimatedSizeBytes ?? 0 }).totalBytes)} Audio
-                </span>
-              )}
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-success" />
                 {formatBytes(deviceInfo.free)} Free

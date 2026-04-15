@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo, useReducer } from 'react'
+import { getTrackRegistry } from './useTrackRegistry'
 
 export interface SyncedItemInfo {
   id: string
@@ -11,13 +12,11 @@ interface DeviceState {
   syncedItems: Set<string>
   syncedItemsInfo: SyncedItemInfo[]
   outOfSyncItems: Set<string>
-  estimatedSizeBytes: number | null
   syncedMusicBytes: number | null
   isActivatingDevice: boolean
-  isCalculatingSize: boolean
 }
 
-const EMPTY: DeviceState = { selectedItems: new Set(), syncedItems: new Set(), syncedItemsInfo: [], outOfSyncItems: new Set(), estimatedSizeBytes: null, syncedMusicBytes: null, isActivatingDevice: false, isCalculatingSize: false }
+const EMPTY: DeviceState = { selectedItems: new Set(), syncedItems: new Set(), syncedItemsInfo: [], outOfSyncItems: new Set(), syncedMusicBytes: null, isActivatingDevice: false }
 
 /** Build a cache key from path+options to detect unchanged re-activations */
 function buildActivationKey(
@@ -34,6 +33,10 @@ function buildActivationKey(
 }
 
 export function useDeviceSelections() {
+  const registry = useMemo(() => getTrackRegistry(), [])
+  // Bumped whenever registry internal state changes (tracks loaded) to re-trigger estimatedSizeBytes
+  const [registryVersion, bumpRegistryVersion] = useReducer((v: number) => v + 1, 0)
+
   const [deviceStates, setDeviceStates] = useState<Map<string, DeviceState>>(new Map())
   const [activeDevicePath, setActiveDevicePath] = useState<string | null>(null)
   // Track last activation key to skip unnecessary re-analysis
@@ -46,6 +49,38 @@ export function useDeviceSelections() {
   const activeState = activeDevicePath
     ? (deviceStates.get(activeDevicePath) ?? EMPTY)
     : EMPTY
+
+  // Compute estimated size from registry (derived, not stored)
+  // registryVersion is bumped when ensureItemTracks resolves to trigger re-computation
+  const estimatedSizeBytes = useMemo(() => {
+    void registryVersion // reactive dep: re-runs when tracks finish loading
+    if (!activeDevicePath) return null
+    const state = deviceStates.get(activeDevicePath)
+    if (!state) return null
+    const lastOpts = lastOptionsRef.current
+    if (!lastOpts) return null
+    return registry.calculateSize(
+      state.selectedItems,
+      activeDevicePath,
+      lastOpts.convertToMp3,
+      lastOpts.bitrate
+    )
+  }, [activeDevicePath, deviceStates, registry, registryVersion])
+
+  // Schedule recalc of syncedMusicBytes after device load
+  const scheduleSyncedMusicRecalc = useCallback((devicePath: string) => {
+    // Defer to next tick so deviceSyncedTracks has time to populate
+    setTimeout(() => {
+      const total = registry.getSyncedMusicBytes(devicePath)
+      setDeviceStates(prev => {
+        const state = prev.get(devicePath)
+        if (!state) return prev
+        return new Map(prev).set(devicePath, { ...state, syncedMusicBytes: total })
+      })
+      // Bump version so estimatedSizeBytes useMemo re-runs with newly loaded itemTracks
+      bumpRegistryVersion()
+    }, 0)
+  }, [registry])
 
   // Activate a device: load its synced items and init selection on first visit
   const activateDevice = useCallback(async (path: string, options?: {
@@ -71,11 +106,17 @@ export function useDeviceSelections() {
     setDeviceStates(prev => {
       if (prev.has(path)) {
         const existing = prev.get(path)!
-        return new Map(prev).set(path, { ...existing, estimatedSizeBytes: null, syncedMusicBytes: null, isActivatingDevice: true })
+        return new Map(prev).set(path, { ...existing, syncedMusicBytes: null, isActivatingDevice: true })
       }
       // Placeholder while loading
-      return new Map(prev).set(path, { selectedItems: new Set(), syncedItems: new Set(), syncedItemsInfo: [], outOfSyncItems: new Set(), estimatedSizeBytes: null, syncedMusicBytes: null, isActivatingDevice: true, isCalculatingSize: false })
+      return new Map(prev).set(path, { selectedItems: new Set(), syncedItems: new Set(), syncedItemsInfo: [], outOfSyncItems: new Set(), syncedMusicBytes: null, isActivatingDevice: true })
     })
+
+    // Load device synced tracks from DB (for size calculations)
+    registry.loadDeviceSyncedTracks(path).then(() => {
+      scheduleSyncedMusicRecalc(path)
+    })
+
     try {
       // Step 1: get already-synced items from local DB (no Jellyfin calls)
       const items = await window.api.getSyncedItems(path)
@@ -85,50 +126,35 @@ export function useDeviceSelections() {
       // In fresh install syncedIds is empty → 0 Jellyfin calls
       const idsToAnalyze = options?.itemIds.filter(id => syncedIds.has(id)) ?? []
 
-      const [outOfSyncResult, sizeResult] = await Promise.all([
-        idsToAnalyze.length > 0 && options
-          ? window.api.analyzeDiff({
-              serverUrl: options.serverUrl,
-              apiKey: options.apiKey,
-              userId: options.userId,
-              itemIds: idsToAnalyze,
-              itemTypes: options.itemTypes,
-              destinationPath: path,
-              options: { convertToMp3: options.convertToMp3, bitrate: options.bitrate, coverArtMode: options.coverArtMode ?? 'embed' },
-            }).then((result: { success: boolean; items: Array<{ itemId: string; summary: { metadataChanged: number; pathChanged: number }; subItems?: Array<{ itemId: string; summary: { newTracks: number; metadataChanged: number; pathChanged: number } }> }> }) => {
-              if (!result.success) return null
-              const outOfSyncIds = new Set<string>()
-              for (const item of result.items) {
-                if (item.summary.metadataChanged > 0 || item.summary.pathChanged > 0) {
-                  outOfSyncIds.add(item.itemId)
-                }
-                // Also mark specific sub-items (albums within artist) as out-of-sync
-                if (item.subItems) {
-                  for (const sub of item.subItems) {
-                    if (sub.summary.metadataChanged > 0 || sub.summary.pathChanged > 0 || sub.summary.newTracks > 0) {
-                      outOfSyncIds.add(sub.itemId)
-                    }
+      const outOfSyncResult = await (idsToAnalyze.length > 0 && options
+        ? window.api.analyzeDiff({
+            serverUrl: options.serverUrl,
+            apiKey: options.apiKey,
+            userId: options.userId,
+            itemIds: idsToAnalyze,
+            itemTypes: options.itemTypes,
+            destinationPath: path,
+            options: { convertToMp3: options.convertToMp3, bitrate: options.bitrate, coverArtMode: options.coverArtMode ?? 'embed' },
+          }).then((result: { success: boolean; items: Array<{ itemId: string; summary: { metadataChanged: number; pathChanged: number }; subItems?: Array<{ itemId: string; summary: { newTracks: number; metadataChanged: number; pathChanged: number } }> }> }) => {
+            if (!result.success) return null
+            const outOfSyncIds = new Set<string>()
+            for (const item of result.items) {
+              if (item.summary.metadataChanged > 0 || item.summary.pathChanged > 0) {
+                outOfSyncIds.add(item.itemId)
+              }
+              // Also mark specific sub-items (albums within artist) as out-of-sync
+              if (item.subItems) {
+                for (const sub of item.subItems) {
+                  if (sub.summary.metadataChanged > 0 || sub.summary.pathChanged > 0 || sub.summary.newTracks > 0) {
+                    outOfSyncIds.add(sub.itemId)
                   }
                 }
               }
-              return outOfSyncIds
-            }).catch(() => null)
-          : Promise.resolve(null),
-        // estimateSize for ALL selected items (new + already-synced) so the storage bar projection is accurate
-        // Pass syncedIds so it can separate synced vs new bytes in a single call
-        options?.itemIds && options.itemIds.length > 0
-          ? window.api.estimateSize({
-              serverUrl: options.serverUrl,
-              apiKey: options.apiKey,
-              userId: options.userId,
-              itemIds: options.itemIds,
-              itemTypes: options.itemTypes,
-              convertToMp3: options.convertToMp3,
-              bitrate: options.bitrate,
-              syncedIds: [...syncedIds],
-            }).catch(() => null)
-          : Promise.resolve(null),
-      ])
+            }
+            return outOfSyncIds
+          }).catch(() => null)
+        : Promise.resolve(null))
+
       const syncedSet = new Set(items.map((i: { id: string }) => i.id))
       const resolvedOutOfSync = outOfSyncResult ?? new Set<string>()
       setDeviceStates(prev => {
@@ -142,10 +168,8 @@ export function useDeviceSelections() {
           syncedItems: syncedSet,
           syncedItemsInfo: items,
           outOfSyncItems: resolvedOutOfSync,
-          estimatedSizeBytes: sizeResult?.totalBytes ?? null,
-          syncedMusicBytes: sizeResult?.syncedMusicBytes ?? null,
+          syncedMusicBytes: null,
           isActivatingDevice: false,
-          isCalculatingSize: false,
         })
       })
     } catch { /* ignore */ } finally {
@@ -156,7 +180,7 @@ export function useDeviceSelections() {
         return new Map(prev).set(path, { ...state, isActivatingDevice: false })
       })
     }
-  }, [])
+  }, [registry, scheduleSyncedMusicRecalc])
 
   // Refresh synced items for a device after sync completes
   const updateSyncedItems = useCallback((path: string, items: SyncedItemInfo[]) => {
@@ -165,19 +189,25 @@ export function useDeviceSelections() {
       const syncedItems = new Set(items.map(i => i.id))
       return new Map(prev).set(path, { ...state, syncedItems, syncedItemsInfo: items })
     })
-  }, [])
+    // Force-reload device tracks from DB since sync changed them
+    registry.loadDeviceSyncedTracks(path, true).then(() => {
+      scheduleSyncedMusicRecalc(path)
+    })
+  }, [registry, scheduleSyncedMusicRecalc])
 
   // Remove device state (on disconnect or remove)
   const removeDevice = useCallback((path: string) => {
+    registry.invalidateDevice(path)
     setDeviceStates(prev => {
       const next = new Map(prev)
       next.delete(path)
       return next
     })
     setActiveDevicePath(prev => prev === path ? null : prev)
-  }, [])
+  }, [registry])
 
   // Invalidate cache so next activateDevice call re-runs analysis (e.g., after library refresh)
+  // Does NOT clear registry track data — use registry.invalidateAll() only for full library refresh
   const invalidateCache = useCallback(() => {
     lastActivationKeyRef.current = null
   }, [])
@@ -185,6 +215,10 @@ export function useDeviceSelections() {
   const toggleItem = useCallback((id: string) => {
     if (!activeDevicePath) return
     invalidateCache()
+
+    const lastOpts = lastOptionsRef.current
+    const itemType = lastOpts?.itemTypes[id]
+
     setDeviceStates(prev => {
       const state = prev.get(activeDevicePath) ?? EMPTY
       const next = new Set(state.selectedItems)
@@ -192,18 +226,44 @@ export function useDeviceSelections() {
       else next.add(id)
       return new Map(prev).set(activeDevicePath, { ...state, selectedItems: next })
     })
-  }, [activeDevicePath])
+
+    // Fetch tracks for this item if needed (for size calculation)
+    if (lastOpts && itemType) {
+      registry.ensureItemTracks(id, itemType, {
+        serverUrl: lastOpts.serverUrl,
+        apiKey: lastOpts.apiKey,
+        userId: lastOpts.userId,
+      }).then(() => bumpRegistryVersion())
+    }
+  }, [activeDevicePath, invalidateCache, registry])
 
   const selectItems = useCallback((items: Array<{ Id: string }>) => {
     if (!activeDevicePath) return
     invalidateCache()
+
+    const lastOpts = lastOptionsRef.current
+
     setDeviceStates(prev => {
       const state = prev.get(activeDevicePath) ?? EMPTY
       const next = new Set(state.selectedItems)
       items.forEach(i => next.add(i.Id))
       return new Map(prev).set(activeDevicePath, { ...state, selectedItems: next })
     })
-  }, [activeDevicePath])
+
+    // Fetch tracks for these items if needed (for size calculation)
+    if (lastOpts) {
+      const fetches = items
+        .filter(item => lastOpts.itemTypes[item.Id])
+        .map(item => registry.ensureItemTracks(item.Id, lastOpts.itemTypes[item.Id], {
+          serverUrl: lastOpts.serverUrl,
+          apiKey: lastOpts.apiKey,
+          userId: lastOpts.userId,
+        }))
+      if (fetches.length > 0) {
+        Promise.all(fetches).then(() => bumpRegistryVersion())
+      }
+    }
+  }, [activeDevicePath, invalidateCache, registry])
 
   const clearSelection = useCallback(() => {
     if (!activeDevicePath) return
@@ -212,7 +272,7 @@ export function useDeviceSelections() {
       const state = prev.get(activeDevicePath) ?? EMPTY
       return new Map(prev).set(activeDevicePath, { ...state, selectedItems: new Set() })
     })
-  }, [activeDevicePath])
+  }, [activeDevicePath, invalidateCache])
 
   // Invalidate cache AND re-run activation with last used params
   const revalidateDevice = useCallback(async () => {
@@ -221,48 +281,14 @@ export function useDeviceSelections() {
     await activateDevice(activeDevicePath, lastOptionsRef.current ?? undefined)
   }, [activeDevicePath])
 
-  // Force recalculate estimatedSizeBytes and syncedMusicBytes when selection changes
-  // Calls estimateSize with current selected items without going through full activateDevice
-  const recalculateSize = useCallback(async (options: {
-    serverUrl: string; apiKey: string; userId: string
-    itemIds: string[]; itemTypes: Record<string, 'artist' | 'album' | 'playlist'>
-    convertToMp3: boolean; bitrate: '128k' | '192k' | '320k'
-    syncedIds?: string[]
-  }) => {
-    if (!activeDevicePath) return
-    setDeviceStates(prev => {
-      const state = prev.get(activeDevicePath) ?? EMPTY
-      return new Map(prev).set(activeDevicePath, { ...state, isCalculatingSize: true })
-    })
-    if (options.itemIds.length === 0) {
-      setDeviceStates(prev => {
-        const state = prev.get(activeDevicePath) ?? EMPTY
-        return new Map(prev).set(activeDevicePath, { ...state, estimatedSizeBytes: null, syncedMusicBytes: null, isCalculatingSize: false })
-      })
-      return
+  // Called on library refresh — clears stale item track data and re-runs analysis
+  const onLibraryRefresh = useCallback(async () => {
+    registry.invalidateAll()
+    lastActivationKeyRef.current = null
+    if (activeDevicePath) {
+      await activateDevice(activeDevicePath, lastOptionsRef.current ?? undefined)
     }
-    try {
-      const result = await window.api.estimateSize({
-        serverUrl: options.serverUrl,
-        apiKey: options.apiKey,
-        userId: options.userId,
-        itemIds: options.itemIds,
-        itemTypes: options.itemTypes,
-        convertToMp3: options.convertToMp3,
-        bitrate: options.bitrate,
-        syncedIds: options.syncedIds,
-      })
-      setDeviceStates(prev => {
-        const state = prev.get(activeDevicePath) ?? EMPTY
-        return new Map(prev).set(activeDevicePath, { ...state, estimatedSizeBytes: result.totalBytes, syncedMusicBytes: result.syncedMusicBytes ?? null, isCalculatingSize: false })
-      })
-    } catch {
-      setDeviceStates(prev => {
-        const state = prev.get(activeDevicePath) ?? EMPTY
-        return new Map(prev).set(activeDevicePath, { ...state, isCalculatingSize: false })
-      })
-    }
-  }, [activeDevicePath])
+  }, [registry, activeDevicePath, activateDevice])
 
   return {
     activeDevicePath,
@@ -270,10 +296,9 @@ export function useDeviceSelections() {
     previouslySyncedItems: activeState.syncedItems,
     syncedItemsInfo: activeState.syncedItemsInfo,
     outOfSyncItems: activeState.outOfSyncItems,
-    estimatedSizeBytes: activeState.estimatedSizeBytes,
+    estimatedSizeBytes,
     syncedMusicBytes: activeState.syncedMusicBytes,
     isActivatingDevice: activeState.isActivatingDevice,
-    isCalculatingSize: activeState.isCalculatingSize,
     activateDevice,
     updateSyncedItems,
     removeDevice,
@@ -282,6 +307,6 @@ export function useDeviceSelections() {
     clearSelection,
     invalidateCache,
     revalidateDevice,
-    recalculateSize,
+    onLibraryRefresh,
   }
 }

@@ -6,10 +6,10 @@ import * as fs from 'fs'
 import * as os from 'os'
 
 // Import new sync module
-import { createSyncCore, CoverArtMode } from '../sync'
+import { createSyncCore, createApiClient, CoverArtMode } from '../sync'
 
 // Import database
-import { initDatabase, recordSyncCompleted, getSyncedItems, getDeviceSyncInfo, getRecentSyncHistory, removeSyncedItems, clearDestinationRecords } from './database'
+import { initDatabase, recordSyncCompleted, getSyncedItems, getDeviceSyncInfo, getRecentSyncHistory, removeSyncedItems, clearDestinationRecords, getSyncedTracksForDevice } from './database'
 
 // Import preferences
 import { getPreferences, setPreferences } from './preferences'
@@ -674,27 +674,31 @@ ipcMain.handle('fs:getFolderStats', async (_event, folderPath: string) => {
 })
 ipcMain.handle('ffmpeg:isAvailable', async () => { try { require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' }); return true } catch (e) { try { require('@ffmpeg-installer/ffmpeg'); return true } catch (e2) { return false } } })
 
-// ─── Estimate size (for preview modal) ────────────────────────────────────────
-ipcMain.handle('sync:estimateSize', async (_event, options: {
+// ─── TrackRegistry IPCs ───────────────────────────────────────────────────────
+// Get synced tracks for a device from DB (used by useTrackRegistry)
+ipcMain.handle('sync:getSyncedTracks', (_event, mountPoint: string) => {
+  try {
+    return getSyncedTracksForDevice(mountPoint)
+  } catch (error) {
+    log.error('sync:getSyncedTracks error:', error)
+    return []
+  }
+})
+
+// Get tracks for an item from Jellyfin (lazy loading for useTrackRegistry)
+ipcMain.handle('sync:getTracksForItem', async (_event, options: {
   serverUrl: string; apiKey: string; userId: string
-  itemIds: string[]; itemTypes: Record<string, 'artist' | 'album' | 'playlist'>
-  convertToMp3?: boolean; bitrate?: string; syncedIds?: string[]
+  itemId: string; itemType: 'artist' | 'album' | 'playlist'
 }) => {
   try {
-    const { serverUrl, apiKey, userId, itemIds, itemTypes, convertToMp3, bitrate, syncedIds } = options
-    const core = createSyncCore({ serverUrl: serverUrl.replace(/\/$/, ''), apiKey, userId })
-    const itemTypesMap = new Map(Object.entries(itemTypes)) as Map<string, 'artist' | 'album' | 'playlist'>
-    const estimate = await core.estimateSize(itemIds, itemTypesMap, { convertToMp3, bitrate, syncedIds: syncedIds ? new Set(syncedIds) : undefined })
-    return {
-      trackCount: estimate.trackCount,
-      totalBytes: estimate.totalBytes,
-      formatBreakdown: Object.fromEntries(estimate.formatBreakdown),
-      syncedMusicBytes: estimate.syncedMusicBytes,
-      newMusicBytes: estimate.newMusicBytes,
-    }
+    const { serverUrl, apiKey, userId, itemId, itemType } = options
+    const api = createApiClient({ baseUrl: serverUrl.replace(/\/$/, ''), apiKey, userId })
+    const itemTypesMap = new Map([[itemId, itemType]])
+    const { tracks, errors } = await api.getTracksForItems([itemId], itemTypesMap)
+    return { tracks, errors }
   } catch (error) {
-    log.error('estimateSize error:', error)
-    return { trackCount: 0, totalBytes: 0, formatBreakdown: {}, syncedMusicBytes: 0, newMusicBytes: 0 }
+    log.error('sync:getTracksForItem error:', error)
+    return { tracks: [], errors: [error instanceof Error ? error.message : String(error)] }
   }
 })
 

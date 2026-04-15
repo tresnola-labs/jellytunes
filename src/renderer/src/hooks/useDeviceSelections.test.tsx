@@ -1,15 +1,35 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useDeviceSelections } from './useDeviceSelections'
+
+// Mock the track registry before importing useDeviceSelections
+const mockRegistry = {
+  loadDeviceSyncedTracks: vi.fn().mockResolvedValue(undefined),
+  ensureItemTracks: vi.fn().mockResolvedValue(undefined),
+  calculateSize: vi.fn().mockReturnValue(null),
+  countNewTracks: vi.fn().mockReturnValue(0),
+  getSyncedMusicBytes: vi.fn().mockReturnValue(0),
+  invalidateAll: vi.fn(),
+  invalidateItem: vi.fn(),
+  invalidateDevice: vi.fn(),
+  isDeviceLoading: vi.fn().mockReturnValue(false),
+  getItemTrackIds: vi.fn().mockReturnValue([]),
+}
+
+vi.mock('./useTrackRegistry', () => ({
+  getTrackRegistry: () => mockRegistry,
+  createTrackRegistry: () => mockRegistry,
+}))
 
 const mockApi = {
   getSyncedItems: vi.fn().mockResolvedValue([]),
+  getSyncedTracks: vi.fn().mockResolvedValue([]),
+  getTracksForItem: vi.fn().mockResolvedValue({ tracks: [], errors: [] }),
   analyzeDiff: vi.fn().mockResolvedValue({
     success: true,
     items: [],
     totals: { newTracks: 0, metadataChanged: 0, removed: 0, pathChanged: 0, unchanged: 0 },
   }),
-  estimateSize: vi.fn().mockResolvedValue({ trackCount: 0, totalBytes: 0, formatBreakdown: {} }),
 }
 
 const defaultOptions = {
@@ -26,11 +46,24 @@ const defaultOptions = {
 beforeEach(() => {
   vi.clearAllMocks()
   Object.defineProperty(window, 'api', { value: mockApi, writable: true })
+  // Reset mock registry state
+  mockRegistry.loadDeviceSyncedTracks.mockResolvedValue(undefined)
+  mockRegistry.ensureItemTracks.mockResolvedValue(undefined)
+  mockRegistry.calculateSize.mockReturnValue(null)
+  mockRegistry.countNewTracks.mockReturnValue(0)
+  mockRegistry.getSyncedMusicBytes.mockReturnValue(0)
 })
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+// Dynamic import to ensure mocks are set up before module loads
+import { useDeviceSelections } from './useDeviceSelections'
 
 describe('useDeviceSelections', () => {
   describe('activateDevice', () => {
-    it('fresh install: getSyncedItems called, analyzeDiff NOT called, estimateSize called with all selected items', async () => {
+    it('fresh install: getSyncedItems called, analyzeDiff NOT called (idsToAnalyze is empty)', async () => {
       mockApi.getSyncedItems.mockResolvedValue([])
 
       const { result } = renderHook(() => useDeviceSelections())
@@ -41,9 +74,6 @@ describe('useDeviceSelections', () => {
 
       expect(mockApi.getSyncedItems).toHaveBeenCalledWith('/Volumes/USB')
       expect(mockApi.analyzeDiff).not.toHaveBeenCalled()
-      expect(mockApi.estimateSize).toHaveBeenCalledTimes(1)
-      const estimateSizeCall = mockApi.estimateSize.mock.calls[0][0]
-      expect(estimateSizeCall.itemIds).toEqual(defaultOptions.itemIds)
     })
 
     it('with items synced: analyzeDiff called only with idsToAnalyze (not all IDs)', async () => {
@@ -68,11 +98,9 @@ describe('useDeviceSelections', () => {
       expect(analyzeDiffCall.itemIds).not.toEqual(defaultOptions.itemIds)
     })
 
-    it('estimateSize called with all selected itemIds (including new items)', async () => {
-      mockApi.getSyncedItems.mockResolvedValue([
-        { id: 'artist-1', name: 'The Beatles', type: 'artist' as const },
-      ])
-      mockApi.estimateSize.mockResolvedValue({ trackCount: 10, totalBytes: 5_000_000, formatBreakdown: {} })
+    it('calls loadDeviceSyncedTracks for device size calculation', async () => {
+      mockApi.getSyncedItems.mockResolvedValue([])
+      mockRegistry.loadDeviceSyncedTracks.mockResolvedValue(undefined)
 
       const { result } = renderHook(() => useDeviceSelections())
 
@@ -80,24 +108,7 @@ describe('useDeviceSelections', () => {
         await result.current.activateDevice('/Volumes/USB', defaultOptions)
       })
 
-      expect(mockApi.estimateSize).toHaveBeenCalledTimes(1)
-      const estimateSizeCall = mockApi.estimateSize.mock.calls[0][0]
-      expect(estimateSizeCall.itemIds).toEqual(defaultOptions.itemIds)
-    })
-
-    it('estimatedSizeBytes populated in state after activation', async () => {
-      mockApi.getSyncedItems.mockResolvedValue([
-        { id: 'artist-1', name: 'The Beatles', type: 'artist' as const },
-      ])
-      mockApi.estimateSize.mockResolvedValue({ trackCount: 10, totalBytes: 5_000_000, formatBreakdown: {} })
-
-      const { result } = renderHook(() => useDeviceSelections())
-
-      await act(async () => {
-        await result.current.activateDevice('/Volumes/USB', defaultOptions)
-      })
-
-      expect(result.current.estimatedSizeBytes).toBe(5_000_000)
+      expect(mockRegistry.loadDeviceSyncedTracks).toHaveBeenCalledWith('/Volumes/USB')
     })
   })
 
