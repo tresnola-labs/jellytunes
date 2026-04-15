@@ -214,7 +214,9 @@ export function useDeviceSelections() {
 
   const toggleItem = useCallback((id: string) => {
     if (!activeDevicePath) return
-    invalidateCache()
+    // Note: do NOT call invalidateCache() here — it nulls lastActivationKeyRef and causes
+    // skeleton on every library→sync navigation. The activation key captures selection state
+    // naturally; a changed selection produces a different key at handleDestinationClick time.
 
     const lastOpts = lastOptionsRef.current
     const itemType = lastOpts?.itemTypes[id]
@@ -235,12 +237,10 @@ export function useDeviceSelections() {
         userId: lastOpts.userId,
       }).then(() => bumpRegistryVersion())
     }
-  }, [activeDevicePath, invalidateCache, registry])
+  }, [activeDevicePath, registry])
 
   const selectItems = useCallback((items: Array<{ Id: string }>) => {
     if (!activeDevicePath) return
-    invalidateCache()
-
     const lastOpts = lastOptionsRef.current
 
     setDeviceStates(prev => {
@@ -263,16 +263,15 @@ export function useDeviceSelections() {
         Promise.all(fetches).then(() => bumpRegistryVersion())
       }
     }
-  }, [activeDevicePath, invalidateCache, registry])
+  }, [activeDevicePath, registry])
 
   const clearSelection = useCallback(() => {
     if (!activeDevicePath) return
-    invalidateCache()
     setDeviceStates(prev => {
       const state = prev.get(activeDevicePath) ?? EMPTY
       return new Map(prev).set(activeDevicePath, { ...state, selectedItems: new Set() })
     })
-  }, [activeDevicePath, invalidateCache])
+  }, [activeDevicePath])
 
   // Invalidate cache AND re-run activation with last used params
   const revalidateDevice = useCallback(async () => {

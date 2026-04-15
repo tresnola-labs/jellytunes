@@ -173,7 +173,9 @@ export function DeviceSyncPanel({
   ]
 
   const usedPct = deviceInfo ? Math.round((deviceInfo.used / deviceInfo.total) * 100) : null
+  const audioPct = (deviceInfo && syncedMusicBytes) ? Math.min(Math.round((syncedMusicBytes / deviceInfo.total) * 100), usedPct ?? 0) : null
   const otherFiles = deviceInfo ? Math.max(0, deviceInfo.used - (syncedMusicBytes ?? 0)) : null
+  const otherPct = usedPct != null && audioPct != null ? Math.max(0, usedPct - audioPct) : usedPct
   const Icon = isUsbDevice ? HardDrive : Folder
   const isFat32 = filesystemType === 'fat32'
   const fsLabel: Record<string, string> = {
@@ -245,10 +247,17 @@ export function DeviceSyncPanel({
               <span className="text-body-sm text-on_surface" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatBytes(deviceInfo.total)} total</span>
             </div>
             <div className="w-full bg-surface_container_highest rounded-full h-2 overflow-hidden flex">
-              {/* Used segment */}
+              {/* Audio segment */}
+              {audioPct != null && audioPct > 0 && (
+                <div
+                  className="h-2 bg-primary transition-all"
+                  style={{ width: `${audioPct}%` }}
+                />
+              )}
+              {/* Other used segment */}
               <div
                 className="h-2 bg-secondary_container transition-all"
-                style={{ width: `${usedPct}%` }}
+                style={{ width: `${otherPct ?? 0}%` }}
               />
               {/* Free segment */}
               <div
@@ -257,6 +266,12 @@ export function DeviceSyncPanel({
               />
             </div>
             <div className="flex items-center gap-3 text-body-sm text-on_surface_variant mt-1.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {syncedMusicBytes != null && syncedMusicBytes > 0 && (
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-sm bg-primary" />
+                  {formatBytes(syncedMusicBytes)} Audio
+                </span>
+              )}
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-secondary_container" />
                 {otherFiles != null ? formatBytes(otherFiles) : '—'} Other
