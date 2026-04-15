@@ -104,11 +104,12 @@ export function useDeviceSelections() {
 
     setActiveDevicePath(path)
     setDeviceStates(prev => {
-      if (prev.has(path)) {
-        const existing = prev.get(path)!
-        return new Map(prev).set(path, { ...existing, syncedMusicBytes: null, isActivatingDevice: true })
+      const existing = prev.get(path)
+      // Only show skeleton on first-ever load — re-activations update in background
+      const isFirstLoad = !existing || existing.syncedItems.size === 0
+      if (existing) {
+        return new Map(prev).set(path, { ...existing, isActivatingDevice: isFirstLoad })
       }
-      // Placeholder while loading
       return new Map(prev).set(path, { selectedItems: new Set(), syncedItems: new Set(), syncedItemsInfo: [], outOfSyncItems: new Set(), syncedMusicBytes: null, isActivatingDevice: true })
     })
 
@@ -168,10 +169,13 @@ export function useDeviceSelections() {
           syncedItems: syncedSet,
           syncedItemsInfo: items,
           outOfSyncItems: resolvedOutOfSync,
-          syncedMusicBytes: null,
+          // Preserve existing syncedMusicBytes — scheduleSyncedMusicRecalc will update it
+          syncedMusicBytes: existing?.syncedMusicBytes ?? null,
           isActivatingDevice: false,
         })
       })
+      // Recompute syncedMusicBytes after activation (re-activation may have new tracks)
+      scheduleSyncedMusicRecalc(path)
     } catch { /* ignore */ } finally {
       activatingRef.current.delete(path)
       setDeviceStates(prev => {
