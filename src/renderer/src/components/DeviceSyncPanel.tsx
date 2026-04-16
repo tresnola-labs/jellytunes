@@ -390,10 +390,10 @@ export function DeviceSyncPanel({
             <button
               data-testid="sync-button"
               onClick={onStartSync}
-              disabled={isActivatingDevice || syncItems.length === 0}
+              disabled={isActivatingDevice || isLoadingSize || syncItems.length === 0}
               className="w-full bg-gradient-primary hover:bg-secondary_container disabled:bg-surface_container_highest disabled:text-on_surface_variant py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
             >
-              {isActivatingDevice ? (
+              {isActivatingDevice || isLoadingSize ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Calculating sync state…</>
               ) : (
                 `Sync to ${destinationName}`

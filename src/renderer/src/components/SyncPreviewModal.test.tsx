@@ -34,6 +34,8 @@ const samplePreviewDataNewTracks: PreviewData = {
   newTracksBytes: 4_000_000_000,
   updatedTracksCount: 5,
   updatedTracksBytes: 400_000_000,
+  alreadySyncedCount: 25,
+  alreadySyncedBytes: 600_000_000,
   willRemoveCount: 10,
   willRemoveBytes: 600_000_000,
 }
@@ -46,6 +48,8 @@ const samplePreviewDataNoUpdates: PreviewData = {
   newTracksBytes: 5_000_000_000,
   updatedTracksCount: 0,
   updatedTracksBytes: 0,
+  alreadySyncedCount: 0,
+  alreadySyncedBytes: 0,
   willRemoveCount: 0,
   willRemoveBytes: 0,
 }
@@ -63,7 +67,7 @@ describe('SyncPreviewModal', () => {
   it('shows new tracks count and size when newTracksCount > 0', () => {
     render(<SyncPreviewModal {...defaultProps} data={samplePreviewDataNewTracks} />)
     expect(screen.getByTestId('preview-new-tracks-count')).toHaveTextContent('120')
-    expect(screen.getByTestId('preview-new-tracks-size')).toHaveTextContent('3.73 GB')
+    expect(screen.getByTestId('preview-new-tracks-size')).toHaveTextContent('4.0 GB')
   })
 
   it('does not show new tracks section when newTracksCount is 0', () => {
@@ -75,7 +79,7 @@ describe('SyncPreviewModal', () => {
   it('shows updated tracks count and size when updatedTracksCount > 0', () => {
     render(<SyncPreviewModal {...defaultProps} data={samplePreviewDataNewTracks} />)
     expect(screen.getByTestId('preview-updated-tracks-count')).toHaveTextContent('5')
-    expect(screen.getByTestId('preview-updated-tracks-size')).toHaveTextContent('0.37 GB')
+    expect(screen.getByTestId('preview-updated-tracks-size')).toHaveTextContent('400 MB')
   })
 
   it('does not show updated tracks section when updatedTracksCount is 0', () => {
@@ -87,7 +91,7 @@ describe('SyncPreviewModal', () => {
   it('shows removed tracks count and size when willRemoveCount > 0', () => {
     render(<SyncPreviewModal {...defaultProps} data={samplePreviewDataNewTracks} />)
     expect(screen.getByTestId('preview-will-remove-count')).toHaveTextContent('10')
-    expect(screen.getByTestId('preview-will-remove-size')).toHaveTextContent('0.56 GB')
+    expect(screen.getByTestId('preview-will-remove-size')).toHaveTextContent('600 MB')
   })
 
   it('does not show removed section when willRemoveCount is 0', () => {

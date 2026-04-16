@@ -109,6 +109,8 @@ export interface PreviewData {
   newTracksBytes: number
   updatedTracksCount: number
   updatedTracksBytes: number
+  alreadySyncedCount: number
+  alreadySyncedBytes: number
   willRemoveCount: number
   willRemoveBytes: number
   isRefining?: boolean

@@ -200,27 +200,33 @@ export function useSync({
     const syncedIds = new Set(syncedItemsInfo.map(i => i.id))
     const newItemIds = [...selectedTracks].filter(id => !syncedIds.has(id))
     const updatedItemIds = [...selectedTracks].filter(id => outOfSyncItems.has(id))
+    const alreadySyncedItemIds = [...selectedTracks].filter(id => syncedIds.has(id) && !outOfSyncItems.has(id))
 
     // Track counts from registry (synced/outOfSync items are always loaded via loadDeviceSyncedTracks)
     const newTracksCount = newItemIds.reduce((sum, id) => sum + registry.getItemTrackIds(id).length, 0)
     const updatedTracksCount = updatedItemIds.reduce((sum, id) => sum + registry.getItemTrackIds(id).length, 0)
+    const alreadySyncedTracksCount = alreadySyncedItemIds.reduce((sum, id) => sum + registry.getItemTrackIds(id).length, 0)
 
     // Sizes from registry (instant, same source as Audio bar in SyncPanel)
     const newItemSet = new Set(newItemIds)
     const updatedItemSet = new Set(updatedItemIds)
+    const alreadySyncedItemSet = new Set(alreadySyncedItemIds)
     const newTracksBytes = registry.calculateSize(newItemSet, syncFolder, convertToMp3, bitrate) ?? 0
     const updatedTracksBytes = registry.calculateSize(updatedItemSet, syncFolder, convertToMp3, bitrate) ?? 0
+    const alreadySyncedBytes = registry.calculateSize(alreadySyncedItemSet, syncFolder, convertToMp3, bitrate) ?? 0
     const willRemoveCount = toDeleteIds.length
     const willRemoveBytes = registry.countRemoveBytes(toDeleteIds, syncFolder)
 
     setPreviewData({
-      trackCount: newTracksCount + updatedTracksCount,
-      totalBytes: newTracksBytes + updatedTracksBytes,
+      trackCount: newTracksCount + updatedTracksCount + alreadySyncedTracksCount,
+      totalBytes: newTracksBytes + updatedTracksBytes + alreadySyncedBytes,
       formatBreakdown: {},
       newTracksCount,
       newTracksBytes,
       updatedTracksCount,
       updatedTracksBytes,
+      alreadySyncedCount: alreadySyncedTracksCount,
+      alreadySyncedBytes,
       willRemoveCount,
       willRemoveBytes,
     })

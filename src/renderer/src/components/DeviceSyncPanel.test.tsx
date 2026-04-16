@@ -195,6 +195,8 @@ describe('DeviceSyncPanel', () => {
         newTracksBytes: 4.5e9,
         updatedTracksCount: 0,
         updatedTracksBytes: 0,
+        alreadySyncedCount: 0,
+        alreadySyncedBytes: 0,
         willRemoveCount: 2,
         willRemoveBytes: 0.5e9,
       }
@@ -212,6 +214,8 @@ describe('DeviceSyncPanel', () => {
         newTracksBytes: 5e9,
         updatedTracksCount: 0,
         updatedTracksBytes: 0,
+        alreadySyncedCount: 0,
+        alreadySyncedBytes: 0,
         willRemoveCount: 0,
         willRemoveBytes: 0,
       }
@@ -230,6 +234,8 @@ describe('DeviceSyncPanel', () => {
         newTracksBytes: 5e9,
         updatedTracksCount: 0,
         updatedTracksBytes: 0,
+        alreadySyncedCount: 0,
+        alreadySyncedBytes: 0,
         willRemoveCount: 0,
         willRemoveBytes: 0,
       }
