@@ -176,6 +176,22 @@ export function useDeviceSelections() {
       })
       // Recompute syncedMusicBytes after activation (re-activation may have new tracks)
       scheduleSyncedMusicRecalc(path)
+      // Eagerly fetch tracks for any selected item not yet in registry
+      // (covers items newly added in library view whose type wasn't in lastOpts at toggle time)
+      if (options) {
+        const toFetch = options.itemIds.filter(
+          id => options.itemTypes[id] && registry.getItemTrackIds(id).length === 0
+        )
+        if (toFetch.length > 0) {
+          Promise.all(
+            toFetch.map(id => registry.ensureItemTracks(id, options.itemTypes[id], {
+              serverUrl: options.serverUrl,
+              apiKey: options.apiKey,
+              userId: options.userId,
+            }))
+          ).then(() => bumpRegistryVersion())
+        }
+      }
     } catch { /* ignore */ } finally {
       activatingRef.current.delete(path)
       setDeviceStates(prev => {
