@@ -52,6 +52,7 @@ beforeEach(() => {
   mockRegistry.calculateSize.mockReturnValue(null)
   mockRegistry.countNewTracks.mockReturnValue(0)
   mockRegistry.getSyncedMusicBytes.mockReturnValue(0)
+  mockRegistry.getItemTrackIds.mockReturnValue([])
 })
 
 afterEach(() => {

@@ -276,12 +276,15 @@ export function DeviceSyncPanel({
                   {formatBytes(syncedMusicBytes)} Audio
                 </span>
               )}
-              {(isLoadingSize || (estimatedSizeBytes != null && estimatedSizeBytes > 0)) && (
-                <span className={`flex items-center gap-1 text-primary transition-opacity duration-300 ${isLoadingSize ? 'opacity-40' : 'opacity-100'}`}>
-                  <span className={`w-2 h-2 rounded-sm bg-primary_container border border-primary inline-block ${isLoadingSize ? 'animate-sizeSquarePulse' : ''}`} />
-                  {estimatedSizeBytes != null && estimatedSizeBytes > 0 ? formatBytes(estimatedSizeBytes) : '—'} Selected
-                </span>
-              )}
+              {(isLoadingSize || isLoadingPreview || (estimatedSizeBytes != null && estimatedSizeBytes > 0)) && (() => {
+                const loading = isLoadingSize || isLoadingPreview
+                return (
+                  <span className={`flex items-center gap-1 text-primary transition-opacity duration-300 ${loading ? 'opacity-40' : 'opacity-100'}`}>
+                    <span className={`w-2 h-2 rounded-sm bg-primary_container border border-primary inline-block ${loading ? 'animate-sizeSquarePulse' : ''}`} />
+                    {estimatedSizeBytes != null && estimatedSizeBytes > 0 ? formatBytes(estimatedSizeBytes) : '—'} Selected
+                  </span>
+                )
+              })()}
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-secondary_container" />
                 {otherFiles != null ? formatBytes(otherFiles) : '—'} Other

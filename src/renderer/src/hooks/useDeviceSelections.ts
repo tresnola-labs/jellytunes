@@ -120,6 +120,17 @@ export function useDeviceSelections() {
       scheduleSyncedMusicRecalc(path)
     })
 
+    // Pre-check synchronously (before any await) which items need track fetching.
+    // This starts the loading indicator immediately, not after the getSyncedItems/analyzeDiff awaits.
+    const eagerToFetch = options
+      ? options.itemIds.filter(id => options.itemTypes[id] && registry.getItemTrackIds(id).length === 0)
+      : []
+    let sizeLoadingIncremented = false
+    if (eagerToFetch.length > 0) {
+      setSizeLoadingCount(c => c + 1)
+      sizeLoadingIncremented = true
+    }
+
     try {
       // Step 1: get already-synced items from local DB (no Jellyfin calls)
       const items = await window.api.getSyncedItems(path)
@@ -180,22 +191,26 @@ export function useDeviceSelections() {
       scheduleSyncedMusicRecalc(path)
       // Eagerly fetch tracks for any selected item not yet in registry
       // (covers items newly added in library view whose type wasn't in lastOpts at toggle time)
-      if (options) {
-        const toFetch = options.itemIds.filter(
-          id => options.itemTypes[id] && registry.getItemTrackIds(id).length === 0
-        )
-        if (toFetch.length > 0) {
-          setSizeLoadingCount(c => c + 1)
+      if (sizeLoadingIncremented) {
+        // Re-check: concurrent calls may have populated some items during the awaits above
+        const stillToFetch = eagerToFetch.filter(id => registry.getItemTrackIds(id).length === 0)
+        sizeLoadingIncremented = false // prevent finally from also decrementing
+        if (stillToFetch.length > 0) {
           Promise.all(
-            toFetch.map(id => registry.ensureItemTracks(id, options.itemTypes[id], {
-              serverUrl: options.serverUrl,
-              apiKey: options.apiKey,
-              userId: options.userId,
+            stillToFetch.map(id => registry.ensureItemTracks(id, options!.itemTypes[id], {
+              serverUrl: options!.serverUrl,
+              apiKey: options!.apiKey,
+              userId: options!.userId,
             }))
           ).then(() => bumpRegistryVersion()).finally(() => setSizeLoadingCount(c => c - 1))
+        } else {
+          setSizeLoadingCount(c => c - 1) // nothing left to fetch, release immediately
         }
       }
     } catch { /* ignore */ } finally {
+      if (sizeLoadingIncremented) {
+        setSizeLoadingCount(c => c - 1) // cleanup on error path
+      }
       activatingRef.current.delete(path)
       setDeviceStates(prev => {
         const state = prev.get(path)
