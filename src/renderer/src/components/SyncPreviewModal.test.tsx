@@ -119,7 +119,7 @@ describe('SyncPreviewModal', () => {
   // 5. shows MP3 conversion info only if convertToMp3 = true
   it('shows MP3 conversion info when convertToMp3 is true', () => {
     render(<SyncPreviewModal {...defaultProps} convertToMp3={true} />)
-    expect(screen.getByText(/FLAC\/lossless and other formats → MP3 320k/)).toBeInTheDocument()
+    expect(screen.getByText(/FLAC\/lossless → MP3 320k/)).toBeInTheDocument()
   })
 
   it('does not show MP3 conversion info when convertToMp3 is false', () => {
