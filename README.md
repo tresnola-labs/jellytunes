@@ -5,7 +5,7 @@
 <h1 align="center">JellyTunes</h1>
 
 <p align="center">
-  Sync your Jellyfin music library to any USB drive or SD card — with optional FLAC to MP3 conversion.
+  Sync your Jellyfin music library to any USB drive, SD card or local folder — with optional FLAC to MP3 conversion.
 </p>
 
 <p align="center">
@@ -20,15 +20,19 @@
 
 ---
 
-JellyTunes is a desktop app for [Jellyfin](https://jellyfin.org) users who want to take their music offline. Browse your server's artists, albums, and playlists, pick a destination device, and hit sync. JellyTunes downloads everything, converts formats if needed, and mirrors your server's folder structure on the device.
+JellyTunes is a desktop app for [Jellyfin](https://jellyfin.org) users who want to take their music offline. Browse your server's artists, albums, and playlists, pick a destination — a USB drive, SD card, or any local folder — and hit sync. JellyTunes downloads everything, converts formats if needed, and mirrors your server's folder structure at the destination.
 
 ## Key Features
 
 - **Browse your full library** — artists, albums, and playlists pulled directly from your Jellyfin server
-- **Selective sync** — only downloads what's new or changed; skips tracks already on the device
-- **FLAC to MP3 conversion** — built-in FFmpeg support with configurable bitrate (128k / 192k / 320k)
+- **Sync anywhere** — USB drives, SD cards, and local folders all work as destinations
+- **Selective sync** — only downloads what's new or changed; skips tracks already at the destination
+- **Out-of-sync detection** — tracks that changed on the server since the last sync are automatically flagged for update
+- **Sync preview** — review exactly what will be added, updated, or removed before you commit to a sync
+- **FLAC to MP3 conversion** — built-in FFmpeg support with configurable bitrate (128k / 192k / 320k); settings saved per device
+- **Smart storage bar** — visual capacity indicator with live size estimates; warns when your selection exceeds free space
 - **Smart filesystem handling** — auto-detects FAT32, exFAT, and NTFS; sanitizes filenames accordingly
-- **Per-device history** — remembers what was synced to each device so you can pick up where you left off
+- **Per-destination history** — remembers what was synced to each device or folder so you can pick up where you left off
 - **Cancel anytime** — stop a sync mid-progress without corrupting what's already been written
 
 ## Screenshots
@@ -72,7 +76,7 @@ Then open the app normally.
 ### Prerequisites
 
 - A [Jellyfin](https://jellyfin.org) server reachable on your network
-- A USB drive, SD card, or any mounted storage device
+- A USB drive, SD card, local folder, or any mounted storage device as destination
 
 ---
 
