@@ -5,7 +5,6 @@
  * Global cache across devices, per-device synced track state.
  */
 
-import { useCallback } from 'react'
 
 export interface TrackInfo {
   id: string
@@ -73,7 +72,7 @@ export function createTrackRegistry() {
    * Also populates itemTracks for synced items so calculateSize works without Jellyfin calls.
    * Pass forceReload=true to refresh after a sync completes.
    */
-  const loadDeviceSyncedTracks = useCallback(async (devicePath: string, forceReload = false): Promise<void> => {
+  const loadDeviceSyncedTracks = async (devicePath: string, forceReload = false): Promise<void> => {
     if (!forceReload && state.deviceSyncedTracks.has(devicePath)) {
       // Already loaded, just mark as not loading
       state.isLoadingDevice.set(devicePath, false)
@@ -103,12 +102,12 @@ export function createTrackRegistry() {
     } finally {
       state.isLoadingDevice.set(devicePath, false)
     }
-  }, [])
+  }
 
   /**
    * Fetch tracks for an item from Jellyfin if not already cached
    */
-  const ensureItemTracks = useCallback(async (
+  const ensureItemTracks = async (
     itemId: string,
     itemType: 'artist' | 'album' | 'playlist',
     jellyfinConfig: { serverUrl: string; apiKey: string; userId: string }
@@ -126,7 +125,7 @@ export function createTrackRegistry() {
       .finally(() => pendingFetches.delete(itemId))
     pendingFetches.set(itemId, p)
     return p
-  }, [])
+  }
 
   async function _fetchAndStore(
     itemId: string,
@@ -163,7 +162,7 @@ export function createTrackRegistry() {
   /**
    * Calculate total size for selected items on a device
    */
-  const calculateSize = useCallback((
+  const calculateSize = (
     selectedItems: Set<string>,
     devicePath: string,
     convertToMp3: boolean,
@@ -196,12 +195,12 @@ export function createTrackRegistry() {
       }
     }
     return total
-  }, [])
+  }
 
   /**
    * Get track count for selected items (new tracks only, not already synced)
    */
-  const countNewTracks = useCallback((
+  const countNewTracks = (
     selectedItems: Set<string>,
     devicePath: string
   ): number => {
@@ -220,13 +219,13 @@ export function createTrackRegistry() {
       }
     }
     return count
-  }, [])
+  }
 
   /**
    * Compute total bytes of tracks belonging to items being removed.
    * Iterates deviceSyncedTracks to find tracks whose itemId is in the delete set.
    */
-  const countRemoveBytes = useCallback((toDeleteIds: string[], devicePath: string): number => {
+  const countRemoveBytes = (toDeleteIds: string[], devicePath: string): number => {
     const syncedTracks = state.deviceSyncedTracks.get(devicePath)
     if (!syncedTracks || toDeleteIds.length === 0) return 0
     const deleteSet = new Set(toDeleteIds)
@@ -235,12 +234,12 @@ export function createTrackRegistry() {
       if (deleteSet.has(itemId)) total += fileSize
     }
     return total
-  }, [])
+  }
 
   /**
    * Get total size of already-synced tracks for a device
    */
-  const getSyncedMusicBytes = useCallback((devicePath: string): number => {
+  const getSyncedMusicBytes = (devicePath: string): number => {
     const syncedTracks = state.deviceSyncedTracks.get(devicePath)
     if (!syncedTracks) return 0
     let total = 0
@@ -248,48 +247,48 @@ export function createTrackRegistry() {
       total += fileSize
     }
     return total
-  }, [])
+  }
 
   /**
    * Invalidate all cached data (library refresh)
    */
-  const invalidateAll = useCallback(() => {
+  const invalidateAll = () => {
     state.generation++
     state.itemTracks.clear()
     state.trackMap.clear()
     // Note: deviceSyncedTracks is NOT cleared - it contains DB data that's still valid
     pendingFetches.clear()
-  }, [])
+  }
 
   /**
    * Invalidate tracks for a specific item (force re-fetch on next selection)
    */
-  const invalidateItem = useCallback((itemId: string) => {
+  const invalidateItem = (itemId: string) => {
     state.itemTracks.delete(itemId)
     // Note: we keep trackMap entries as they may still be referenced by deviceSyncedTracks
-  }, [])
+  }
 
   /**
    * Invalidate device state (on disconnect)
    */
-  const invalidateDevice = useCallback((devicePath: string) => {
+  const invalidateDevice = (devicePath: string) => {
     state.deviceSyncedTracks.delete(devicePath)
     state.isLoadingDevice.delete(devicePath)
-  }, [])
+  }
 
   /**
    * Check if a device's synced tracks are loaded
    */
-  const isDeviceLoading = useCallback((devicePath: string): boolean => {
+  const isDeviceLoading = (devicePath: string): boolean => {
     return state.isLoadingDevice.get(devicePath) ?? false
-  }, [])
+  }
 
   /**
    * Get all cached track IDs for an item
    */
-  const getItemTrackIds = useCallback((itemId: string): string[] => {
+  const getItemTrackIds = (itemId: string): string[] => {
     return state.itemTracks.get(itemId) ?? []
-  }, [])
+  }
 
   return {
     loadDeviceSyncedTracks,
