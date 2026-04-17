@@ -26,6 +26,7 @@
 - Fixed track loading: tracks are now fetched eagerly on device activation, not lazily at sync time.
 - Fixed About modal analytics toggle not matching the sync panel toggle style.
 - Fixed `addDestination` returning a stale closure instead of the fresh destination object.
+- Fixed v0.2.x→v0.3.0 upgrade: synced items showed 0KB audio size and an empty "already synced" section in the sync preview. Tracks are now eagerly fetched for auto-selected synced items on device activation, and the skip+convert heal path stores the real file size instead of null.
 
 ### Changed
 - Migrated to Material Design 3 design tokens and typography scale.

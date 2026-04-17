@@ -40,6 +40,9 @@ hierarchy rather than raw text.
 - Smoother animations when loading track sizes
 - More reliable device detection on all platforms
 
+### Upgrading from a previous version?
+If you were already using JellyTunes, your synced library will show correctly on first launch — no need to re-sync anything.
+
 ---
 
 Full technical changelog: [CHANGELOG.md](CHANGELOG.md)
