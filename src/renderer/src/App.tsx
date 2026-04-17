@@ -393,14 +393,11 @@ function App(): JSX.Element {
                 isLoadingSize={deviceSelections.isLoadingSize}
                 onToggleItem={deviceSelections.toggleItem}
                 onToggleConvert={() => {
-                  let next = false
-                  sync.setConvertToMp3(v => {
-                    next = !v
-                    deviceSelections.updateConvertOptions(next, sync.bitrate)
-                    return next
-                  })
+                  const willBeOn = !sync.convertToMp3
+                  sync.setConvertToMp3(willBeOn)
+                  deviceSelections.updateConvertOptions(willBeOn, sync.bitrate)
                   const destId = savedDestinations.find(d => d.path === deviceSelections.activeDevicePath)?.id
-                  if (destId) saveDestPrefs(destId, { convertToMp3: next })
+                  if (destId) saveDestPrefs(destId, { convertToMp3: willBeOn })
                 }}
                 onBitrateChange={b => {
                   deviceSelections.updateConvertOptions(sync.convertToMp3, b)
