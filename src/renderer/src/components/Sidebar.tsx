@@ -21,6 +21,7 @@ interface SidebarProps {
   onRefreshLibrary?: () => void
   onRemoveDestination: (path: string, deleteFiles: boolean, onDone: () => void) => void
   isRemovingDestination?: boolean
+  isSyncing?: boolean
 }
 
 export function Sidebar({
@@ -41,6 +42,7 @@ export function Sidebar({
   onRefreshLibrary,
   onRemoveDestination,
   isRemovingDestination,
+  isSyncing,
 }: SidebarProps): JSX.Element {
   const [modalDest, setModalDest] = useState<SavedDestination | null>(null)
 
@@ -59,7 +61,7 @@ export function Sidebar({
   const hasFolders = savedDestinations.length > 0
 
   return (
-    <aside className="w-64 border-r border-outline_variant p-4 flex flex-col">
+    <aside className={`w-64 border-r border-outline_variant p-4 flex flex-col${isSyncing ? ' pointer-events-none select-none' : ''}`}>
       {/* Library */}
       <div className="mb-6">
         <h3 className="text-label-md uppercase text-on_surface_variant/60 px-3 mb-1 flex items-center justify-between">

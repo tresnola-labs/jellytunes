@@ -11,6 +11,7 @@ interface FooterStatsProps {
   activeDeviceName?: string | null
   isUsbDevice?: boolean
   onGoToDevice?: () => void
+  isSyncing?: boolean
 }
 
 export function FooterStats({
@@ -22,6 +23,7 @@ export function FooterStats({
   activeDeviceName,
   isUsbDevice,
   onGoToDevice,
+  isSyncing,
 }: FooterStatsProps): JSX.Element {
   const [updateInfo, setUpdateInfo] = useState<{ latestVersion: string; releaseUrl: string } | null>(null)
 
@@ -54,7 +56,8 @@ export function FooterStats({
       {activeDeviceName ? (
         <button
           onClick={onGoToDevice}
-          className="flex items-center gap-1.5 px-3 py-1.5 -my-1.5 rounded-lg text-primary hover:bg-primary_container/15 transition-colors cursor-pointer"
+          disabled={isSyncing}
+          className={`flex items-center gap-1.5 px-3 py-1.5 -my-1.5 rounded-lg transition-colors${isSyncing ? ' text-primary/40 cursor-default' : ' text-primary hover:bg-primary_container/15 cursor-pointer'}`}
           aria-label={`View device ${activeDeviceName}`}
         >
           <DeviceIcon className="w-3 h-3" />
@@ -63,7 +66,8 @@ export function FooterStats({
       ) : (
         <button
           onClick={onGoToDevice}
-          className="flex items-center gap-1.5 px-3 py-1.5 -my-1.5 rounded-lg text-on_surface_variant hover:bg-surface_container_high/50 transition-colors cursor-pointer"
+          disabled={isSyncing}
+          className={`flex items-center gap-1.5 px-3 py-1.5 -my-1.5 rounded-lg transition-colors${isSyncing ? ' text-on_surface_variant/40 cursor-default' : ' text-on_surface_variant hover:bg-surface_container_high/50 cursor-pointer'}`}
           aria-label="Select a device"
         >
           No device selected

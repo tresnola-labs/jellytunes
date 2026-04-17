@@ -306,7 +306,7 @@ function App(): JSX.Element {
 
   return (
     <div className="h-screen flex flex-col bg-surface text-on_surface">
-      <AppHeader isConnected={connection.isConnected} serverUrl={connection.jellyfinConfig?.url} onDisconnect={connection.disconnect} />
+      <AppHeader isConnected={connection.isConnected} serverUrl={connection.jellyfinConfig?.url} onDisconnect={connection.disconnect} isSyncing={sync.isSyncing} />
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
@@ -331,6 +331,7 @@ function App(): JSX.Element {
           }}
           onRemoveDestination={(path, deleteFiles, onDone) => handleRemoveDestination(path, deleteFiles, onDone)}
           isRemovingDestination={isRemovingDestination}
+          isSyncing={sync.isSyncing}
         />
 
         <div className="flex-1 overflow-hidden flex flex-col relative">
@@ -432,6 +433,7 @@ function App(): JSX.Element {
         activeDeviceName={deviceSelections.activeDevicePath ? getDestinationName(deviceSelections.activeDevicePath) : null}
         isUsbDevice={deviceSelections.activeDevicePath ? isUsbDevice(deviceSelections.activeDevicePath) : false}
         onGoToDevice={() => setActiveSection('device')}
+        isSyncing={sync.isSyncing}
       />
 
       {sync.syncSuccessData && (

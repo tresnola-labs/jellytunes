@@ -192,7 +192,10 @@ export function DeviceSyncPanel({
       {/* ── Centering wrapper — max-width + centering ─ */}
       <div className="flex flex-col flex-1 min-h-0 w-full max-w-2xl mx-auto px-6">
       {/* ── Scrollable content ─────────────────────── */}
-      <div data-testid="sync-panel" className="flex-1 overflow-auto pt-6">
+      <div
+        data-testid="sync-panel"
+        className={`flex-1 overflow-auto pt-6${isSyncing ? ' pointer-events-none select-none' : ''}`}
+      >
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-start gap-3">
@@ -407,7 +410,7 @@ export function DeviceSyncPanel({
 
       {(isSyncing || syncProgress) && (
         <div className="flex-shrink-0 border-t border-outline_variant">
-          <div className="max-w-2xl mx-auto px-6 pt-6 pb-6">
+          <div className={`max-w-2xl mx-auto px-6 pt-6 pb-6${isSyncing ? ' pointer-events-none' : ''}`}>
             {syncProgress && (
               <div className="mb-4">
                 <SyncProgressBar syncProgress={syncProgress} />
@@ -420,13 +423,15 @@ export function DeviceSyncPanel({
               </div>
             )}
             {isSyncing && (
-              <button
-                data-testid="cancel-sync-button"
-                onClick={onCancelSync}
-                className="w-full bg-error hover:bg-error/80 text-on_error py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <X className="w-4 h-4" /> Cancel Sync
-              </button>
+              <div className="pointer-events-auto">
+                <button
+                  data-testid="cancel-sync-button"
+                  onClick={onCancelSync}
+                  className="w-full bg-error hover:bg-error/80 text-on_error py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <X className="w-4 h-4" /> Cancel Sync
+                </button>
+              </div>
             )}
           </div>
         </div>

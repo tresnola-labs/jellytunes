@@ -7,9 +7,10 @@ interface AppHeaderProps {
   isConnected: boolean
   serverUrl?: string | null
   onDisconnect: () => void
+  isSyncing?: boolean
 }
 
-export function AppHeader({ isConnected, serverUrl, onDisconnect }: AppHeaderProps): JSX.Element {
+export function AppHeader({ isConnected, serverUrl, onDisconnect, isSyncing }: AppHeaderProps): JSX.Element {
   const hostname = serverUrl ? (() => { try { return new URL(serverUrl).hostname } catch { return serverUrl } })() : null
   const [showAbout, setShowAbout] = useState(false)
 
@@ -33,7 +34,8 @@ export function AppHeader({ isConnected, serverUrl, onDisconnect }: AppHeaderPro
         <button
           data-testid="about-button"
           onClick={() => setShowAbout(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-body-md text-on_surface_variant hover:text-on_surface hover:bg-surface_container_high rounded-lg transition-colors"
+          disabled={isSyncing}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-body-md rounded-lg transition-colors${isSyncing ? ' text-on_surface_variant/40 cursor-default' : ' text-on_surface_variant hover:text-on_surface hover:bg-surface_container_high'}`}
         >
           <Info className="w-4 h-4" />
           About
@@ -41,7 +43,8 @@ export function AppHeader({ isConnected, serverUrl, onDisconnect }: AppHeaderPro
         {isConnected && (
           <button
             onClick={onDisconnect}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-body-md text-on_surface_variant hover:text-on_surface hover:bg-surface_container_high rounded-lg transition-colors"
+            disabled={isSyncing}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-body-md rounded-lg transition-colors${isSyncing ? ' text-on_surface_variant/40 cursor-default' : ' text-on_surface_variant hover:text-on_surface hover:bg-surface_container_high'}`}
           >
             <LogOut className="w-4 h-4" />
             Disconnect
