@@ -348,5 +348,11 @@ export function useDeviceSelections() {
     invalidateCache,
     revalidateDevice,
     onLibraryRefresh,
+    updateConvertOptions: useCallback((convertToMp3: boolean, bitrate: '128k' | '192k' | '320k') => {
+      if (lastOptionsRef.current) {
+        lastOptionsRef.current = { ...lastOptionsRef.current, convertToMp3, bitrate }
+      }
+      bumpRegistryVersion()
+    }, []),
   }
 }
