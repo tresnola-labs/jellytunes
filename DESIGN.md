@@ -99,11 +99,14 @@ The sync progress component is distinct from the storage bar. It must expose the
 * **Failed tracks:** If `tracksFailed > 0`, show an inline warning badge during and after the operation.
 
 ### Progress — Storage Bar
-Separate from sync operation progress. Shows device space at a glance:
+Separate from sync operation progress. Shows device space at a glance. Three segments in order:
 
+* **Other** (non-audio used space — least important): `secondary_container` (#4e3b8c) fill. Dark purple; clearly distinguishable from the unfilled background but less prominent than the audio segment.
+* **Audio** (synced or estimated music — most important): `primary_container` (#7c4dff) fill. Brand purple; creates clear contrast against the green Free segment. Must have a minimum rendered width of 1% so it remains visible when the synced library is small relative to total device capacity.
 * **Free Space:** `success` (#4caf82) fill.
-* **Projected Space:** `tertiary_container` (#b55800) fill. Must include a text label ("X GB projected") — do not rely on color alone to communicate this state (WCAG 1.4.1).
 * **Unfilled:** `surface_container_highest`.
+
+Must include text labels for each segment (WCAG 1.4.1 — do not rely on color alone).
 
 ### List Items
 * **Structure:** In views with fewer than ~30 items, use `0.5rem` vertical gap between items with no divider. In views with 30+ items (artist/album/playlist lists), use a hairline divider: `border-b` at `outline_variant` 30% opacity.

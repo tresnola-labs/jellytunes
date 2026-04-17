@@ -178,7 +178,9 @@ export function DeviceSyncPanel({
   const audioBytes = estimatedSizeBytes ?? syncedMusicBytes ?? 0
   const otherFiles = deviceInfo ? Math.max(0, deviceInfo.used - (syncedMusicBytes ?? 0)) : null
   const otherPct = deviceInfo ? Math.round((Math.max(0, deviceInfo.used - (syncedMusicBytes ?? 0)) / deviceInfo.total) * 100) : null
-  const audioPct = deviceInfo && audioBytes > 0 ? Math.min(Math.round((audioBytes / deviceInfo.total) * 100), Math.max(0, 100 - (otherPct ?? 0))) : null
+  const rawAudioPct = deviceInfo && audioBytes > 0 ? Math.min(Math.round((audioBytes / deviceInfo.total) * 100), Math.max(0, 100 - (otherPct ?? 0))) : null
+  // Always show at least 1% so the bar is visible even when synced content is tiny
+  const audioPct = rawAudioPct !== null ? Math.max(rawAudioPct, 1) : null
   const isAudioLoading = !!isLoadingSize
   const audioDisplayBytes = estimatedSizeBytes ?? syncedMusicBytes
   const Icon = isUsbDevice ? HardDrive : Folder
@@ -255,15 +257,15 @@ export function DeviceSyncPanel({
               <span className="text-body-sm text-on_surface" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatBytes(deviceInfo.total)} total</span>
             </div>
             <div className="w-full bg-surface_container_highest rounded-full h-2 overflow-hidden flex">
-              {/* Other used segment */}
+              {/* Other used segment — de-emphasised, least important */}
               <div
-                className="h-2 bg-tertiary_container transition-all"
+                className="h-2 bg-secondary_container transition-all"
                 style={{ width: `${otherPct ?? 0}%` }}
               />
-              {/* Audio segment */}
+              {/* Audio segment — brand purple, most important */}
               {audioPct != null && audioPct > 0 && (
                 <div
-                  className="h-2 bg-secondary transition-all"
+                  className="h-2 bg-primary_container transition-all"
                   style={{ width: `${audioPct}%` }}
                 />
               )}
@@ -275,11 +277,11 @@ export function DeviceSyncPanel({
             </div>
             <div className="flex items-center gap-3 text-body-sm text-on_surface_variant mt-1.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm bg-tertiary_container" />
+                <span className="w-2 h-2 rounded-sm bg-secondary_container" />
                 {otherFiles != null ? formatBytes(otherFiles) : '—'} Other
               </span>
               <span className="flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-sm bg-secondary${isAudioLoading ? ' animate-sizeSquarePulse' : ''}`} />
+                <span className={`w-2 h-2 rounded-sm bg-primary_container${isAudioLoading ? ' animate-sizeSquarePulse' : ''}`} />
                 <span className={isAudioLoading ? 'opacity-40' : ''}>
                   {audioDisplayBytes != null
                     ? `${convertToMp3 ? '~' : ''}${formatBytes(audioDisplayBytes)}`
