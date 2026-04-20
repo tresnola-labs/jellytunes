@@ -136,11 +136,10 @@ class SyncApiImpl implements SyncApi {
     this.logger = config.logger;
   }
 
-  private getHeaders(): Record<string, string> {
+  private getAuthHeaders(): Record<string, string> {
     return {
       'X-MediaBrowser-Token': this.apiKey,
       'X-Emby-Token': this.apiKey,
-      'Content-Type': 'application/json',
     };
   }
 
@@ -156,7 +155,7 @@ class SyncApiImpl implements SyncApi {
     try {
       const response = await this.fetchFn(url, {
         method: options?.method ?? 'GET',
-        headers: this.getHeaders(),
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
         body: options?.body ? JSON.stringify(options.body) : undefined,
         signal: controller.signal,
       });
@@ -328,7 +327,7 @@ class SyncApiImpl implements SyncApi {
     try {
       const response = await this.fetchFn(url, {
         method: 'GET',
-        headers: { 'X-MediaBrowser-Token': this.apiKey, 'X-Emby-Token': this.apiKey },
+        headers: this.getAuthHeaders(),
         signal: controller.signal,
       });
 
@@ -403,7 +402,7 @@ class SyncApiImpl implements SyncApi {
     try {
       const response = await this.fetchFn(url, {
         method: 'GET',
-        headers: { 'X-MediaBrowser-Token': this.apiKey, 'X-Emby-Token': this.apiKey },
+        headers: this.getAuthHeaders(),
         signal: controller.signal,
       });
 
