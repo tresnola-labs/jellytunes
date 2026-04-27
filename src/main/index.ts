@@ -503,7 +503,7 @@ ipcMain.handle('bug:report', async () => {
       `Add any other context about the problem here.`,
     ].join('\n')
 
-    const url = `https://github.com/tresnola-labs/jellytunes/issues/new?` +
+    const url = `https://github.com/orainlabs/jellytunes/issues/new?` +
       `labels=${encodeURIComponent('bug')}&` +
       `title=${encodeURIComponent('Bug report')}&` +
       `body=${encodeURIComponent(body)}`
@@ -769,7 +769,7 @@ ipcMain.handle('sync:clearDestination', async (_event, options: {
 })
 
 // Update checker — queries analytics worker at most once per 24h
-const UPDATE_CHECKER_URL = 'https://api.tresnola.dev/jellytunes/updates/latest'
+const UPDATE_CHECKER_URL = 'https://api.orainlabs.dev/jellytunes/updates/latest'
 let lastUpdateCheck = 0
 let cachedUpdateInfo: { updateAvailable: boolean; latestVersion: string; releaseUrl: string } | null = null
 

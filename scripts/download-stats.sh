@@ -2,7 +2,7 @@
 # Download statistics from GitHub Releases
 # Usage: bash scripts/download-stats.sh
 
-REPO="tresnola-labs/jellytunes"
+REPO="orainlabs/jellytunes"
 
 echo "Fetching download stats for $REPO..."
 echo ""

@@ -26,7 +26,7 @@ async function handleUpdateCheck(request: Request, env: Env, ctx: ExecutionConte
   }
 
   const githubRes = await fetch(
-    'https://api.github.com/repos/tresnola-labs/jellytunes/releases/latest',
+    'https://api.github.com/repos/orainlabs/jellytunes/releases/latest',
     {
       headers: {
         'User-Agent': ua || 'JellyTunes-Worker',

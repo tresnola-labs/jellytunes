@@ -1,6 +1,6 @@
 # Privacy Policy
 
-JellyTunes is developed by OriaFlow Labs. We believe in transparency and minimal data collection.
+JellyTunes is developed by Orain Labs. We believe in transparency and minimal data collection.
 
 ## What We Collect
 

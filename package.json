@@ -4,8 +4,8 @@
   "description": "Sincronizador de música Jellyfin → dispositivos MP3/FLAC",
   "main": "dist/main/index.js",
   "author": {
-    "name": "OriaFlow Labs",
-    "email": "hello@oriaflow.dev"
+    "name": "Orain Labs",
+    "email": "hi@orainlabs.dev"
   },
   "license": "GPL-3.0-or-later",
   "scripts": {
