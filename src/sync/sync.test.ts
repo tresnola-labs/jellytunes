@@ -1027,6 +1027,165 @@ describe('Error Handling', () => {
     });
   });
 
+  describe('convertStreamToMp3WithMeta FFmpeg failures', () => {
+    // Helper: build a mock AudioConverter that uses real spawn but intercepts it
+    function makeSpawnInterceptor(closeCode: number | null, stderrText = '') {
+      const { spawn } = require('child_process');
+      const originalSpawn = spawn;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mockProc = new (require('events').EventEmitter)() as any;
+      mockProc.stdin = new (require('events').EventEmitter)();
+      mockProc.stderr = new (require('events').EventEmitter)();
+      mockProc.on = mockProc.on.bind(mockProc);
+      mockProc.kill = vi.fn();
+      mockProc.stdin.on = vi.fn();
+      mockProc.stderr.on = vi.fn((_event: string, cb: (chunk: Buffer) => void) => {
+        if (stderrText) cb(Buffer.from(stderrText));
+      });
+
+      let resolveClose: (code: number) => void;
+      const closePromise = new Promise<number>((res) => { resolveClose = res; });
+
+      // Schedule the close event after the promise is constructed
+      if (closeCode !== null) {
+        setTimeout(() => {
+          mockProc.stderr.emit('data', Buffer.from(stderrText));
+          mockProc.emit('close', closeCode);
+        }, 0);
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn(require('child_process'), 'spawn').mockImplementation(() => {
+        // schedule close in next tick so the Promise in convertStreamToMp3WithMeta can subscribe
+        setTimeout(() => {
+          if (closeCode !== null) {
+            mockProc.stderr.emit('data', Buffer.from(stderrText));
+            mockProc.emit('close', closeCode);
+          }
+        }, 0);
+        return mockProc;
+      });
+
+      return { mockProc, closePromise };
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('returns success:false when FFmpeg exits with non-zero code', async () => {
+      const { createFFmpegConverter } = await import('./sync-files');
+      const { Writable, Readable } = require('stream');
+
+      // Mock proc.stdin as a real Writable so pipe() works
+      const mockStdin = new Writable({
+        write(_chunk: Buffer, _enc: string, cb: () => void) { cb(); }
+      });
+
+      vi.spyOn(require('child_process'), 'spawn').mockImplementation(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const proc = new (require('events').EventEmitter)() as any;
+        proc.stdin = mockStdin;
+        proc.stderr = new (require('events').EventEmitter)();
+        proc.stderr.on = vi.fn();
+        proc.kill = vi.fn();
+        setTimeout(() => proc.emit('close', 1), 0);
+        return proc;
+      });
+
+      const converter = createFFmpegConverter();
+      const input = Readable.from(Buffer.alloc(1024));
+
+      const result = await converter.convertStreamToMp3WithMeta(
+        input,
+        '/tmp/test-output.mp3',
+        '192k',
+        { title: 'Test' }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('FFmpeg exited with code 1');
+    });
+
+    it('deletes temp cover file after FFmpeg failure', async () => {
+      const fs = require('fs');
+      const unlinkSyncSpy = vi.spyOn(fs, 'unlinkSync');
+      const { Writable, Readable } = require('stream');
+
+      const mockStdin = new Writable({
+        write(_chunk: Buffer, _enc: string, cb: () => void) { cb(); }
+      });
+
+      vi.spyOn(require('child_process'), 'spawn').mockImplementation(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const proc = new (require('events').EventEmitter)() as any;
+        proc.stdin = mockStdin;
+        proc.stderr = new (require('events').EventEmitter)();
+        proc.stderr.on = vi.fn();
+        proc.kill = vi.fn();
+        setTimeout(() => proc.emit('close', 1), 0);
+        return proc;
+      });
+
+      const { createFFmpegConverter } = await import('./sync-files');
+      const converter = createFFmpegConverter();
+      const input = Readable.from(Buffer.alloc(1024));
+      const coverData = Buffer.alloc(1024);
+
+      await converter.convertStreamToMp3WithMeta(
+        input,
+        '/tmp/test-output.mp3',
+        '192k',
+        { title: 'Test', artist: 'Artist' },
+        coverData
+      );
+
+      // After FFmpeg failed (exit code 1), temp cover file must have been deleted
+      const tmpdir = require('os').tmpdir();
+      const calledPaths = unlinkSyncSpy.mock.calls.map(([p]: [string]) => p);
+      const coverTempFiles = calledPaths.filter((p: string) => p.startsWith(`${tmpdir}/jt-cover-`));
+      expect(coverTempFiles.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('tagFile error handling', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('returns error when input file does not exist (FFmpeg exits non-zero)', async () => {
+      const { Writable } = require('stream');
+      const mockStdin = new Writable({
+        write(_chunk: Buffer, _enc: string, cb: () => void) { cb(); }
+      });
+
+      vi.spyOn(require('child_process'), 'spawn').mockImplementation(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const proc = new (require('events').EventEmitter)() as any;
+        proc.stdin = mockStdin;
+        proc.stderr = new (require('events').EventEmitter)();
+        proc.stderr.on = vi.fn();
+        proc.kill = vi.fn();
+        // FFmpeg exits with 1 when input file is not found
+        setTimeout(() => proc.emit('close', 1), 0);
+        return proc;
+      });
+
+      const { createFFmpegConverter } = await import('./sync-files');
+      const converter = createFFmpegConverter();
+
+      const result = await converter.tagFile(
+        '/nonexistent/file.mp3',
+        '/tmp/tagged-output.mp3',
+        { title: 'Test', artist: 'Artist' }
+      );
+
+      // Should return error result, not throw
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('FFmpeg exited with code 1');
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Move detection without re-download (Phase 3)
   // When path changes but metadata same, upsertSyncedTrack is called with new path
