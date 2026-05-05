@@ -1301,6 +1301,15 @@ class SyncCoreImpl {
 
     try {
       const buffer = await this.deps.api.getCoverArt(trackId);
+
+      // Discard cover art exceeding 5MB to avoid embedding bloated images
+      const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5 MB
+      if (buffer.length > MAX_COVER_SIZE) {
+        this.progressEmitter.emit({ phase: this.currentPhase, current: 0, total: 0, warning: 'cover_art_too_large' });
+        this.log.warn(`Cover art for track ${trackId} exceeds 5 MB (${buffer.length} bytes) — discarding`);
+        return undefined;
+      }
+
       this.coverArtCache.set(cacheKey, buffer);
       return buffer;
     } catch {

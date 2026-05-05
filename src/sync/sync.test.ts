@@ -2063,3 +2063,148 @@ describe('sync loop healing on skip', () => {
     expect(vi.mocked(upsertSyncedTrack)).toHaveBeenCalled();
   });
 });
+
+// =============================================================================
+// cover art size limit (ORAIN-0232)
+// Discarding cover art > 5 MB instead of embedding it prevents bloated tags.
+// =============================================================================
+
+describe('cover art size limit — ORAIN-0232', () => {
+  const FIVE_MB = 5 * 1024 * 1024;
+
+  it('embeds cover art when buffer is exactly 5 MB (not greater than)', async () => {
+    const fiveMbBuffer = Buffer.alloc(FIVE_MB, 0xff);
+    const progressWarnings: string[] = [];
+
+    const track: TrackInfo = {
+      id: 'track-cover-5mb',
+      name: 'Track 5MB Cover',
+      album: 'Album 5MB Cover',
+      artists: ['Artist'],
+      path: '/music/artist/album/track.mp3',
+      format: 'mp3',
+      size: 5000000,
+      albumId: 'album-cover-5mb',
+    };
+
+    const getTracksForItemsSpy = vi.fn(() =>
+      Promise.resolve({ tracks: [track], errors: [] })
+    );
+
+    const deps = createMockDeps({
+      api: createMockApiClient({
+        getTracksForItems: getTracksForItemsSpy,
+        getCoverArt: async () => fiveMbBuffer,
+        downloadItem: async () => Buffer.from('fake-audio-data'),
+        downloadItemStream: async () => {
+          const { Readable } = require('stream');
+          return Readable.from(Buffer.from('fake-audio-data'));
+        },
+      }),
+    });
+
+    const core = createTestSyncCore(validConfig, deps);
+    const itemTypes = new Map<string, ItemType>([['album-cover-5mb', 'album']]);
+
+    await core.sync(
+      { itemIds: ['album-cover-5mb'], itemTypes, destinationPath: '/mnt/usb' },
+      (p) => { if (p.warning) progressWarnings.push(p.warning); }
+    );
+
+    // Exactly 5 MB is NOT greater than 5 MB — no warning should be emitted
+    expect(progressWarnings.filter((w) => w === 'cover_art_too_large')).toHaveLength(0);
+  });
+
+  it('discards cover art and emits warning when buffer exceeds 5 MB by 1 byte', async () => {
+    const overLimitBuffer = Buffer.alloc(FIVE_MB + 1, 0xff);
+    const progressWarnings: string[] = [];
+
+    const track: TrackInfo = {
+      id: 'track-cover-big',
+      name: 'Track Big Cover',
+      album: 'Album Big Cover',
+      artists: ['Artist'],
+      path: '/music/artist/album/track.mp3',
+      format: 'mp3',
+      size: 5000000,
+      albumId: 'album-cover-big',
+    };
+
+    const getTracksForItemsSpy = vi.fn(() =>
+      Promise.resolve({ tracks: [track], errors: [] })
+    );
+
+    const deps = createMockDeps({
+      api: createMockApiClient({
+        getTracksForItems: getTracksForItemsSpy,
+        getCoverArt: async () => overLimitBuffer,
+        downloadItem: async () => Buffer.from('fake-audio-data'),
+        downloadItemStream: async () => {
+          const { Readable } = require('stream');
+          return Readable.from(Buffer.from('fake-audio-data'));
+        },
+      }),
+    });
+
+    const core = createTestSyncCore(validConfig, deps);
+    const itemTypes = new Map<string, ItemType>([['album-cover-big', 'album']]);
+
+    await core.sync(
+      { itemIds: ['album-cover-big'], itemTypes, destinationPath: '/mnt/usb' },
+      (p) => { if (p.warning) progressWarnings.push(p.warning); }
+    );
+
+    // Over 5 MB → cover_art_too_large warning must be emitted
+    expect(progressWarnings).toContain('cover_art_too_large');
+  });
+
+  it('sync succeeds without throwing when cover art is discarded (track not aborted)', async () => {
+    const overLimitBuffer = Buffer.alloc(FIVE_MB + 1, 0xff);
+
+    const track: TrackInfo = {
+      id: 'track-cover-ok',
+      name: 'Track OK',
+      album: 'Album OK',
+      artists: ['Artist'],
+      path: '/music/artist/album/track.mp3',
+      format: 'mp3',
+      size: 5000000,
+      albumId: 'album-cover-ok',
+    };
+
+    const getTracksForItemsSpy = vi.fn(() =>
+      Promise.resolve({ tracks: [track], errors: [] })
+    );
+
+    const deps = createMockDeps({
+      api: createMockApiClient({
+        getTracksForItems: getTracksForItemsSpy,
+        getCoverArt: async () => overLimitBuffer,
+        downloadItem: async () => Buffer.from('fake-audio-data'),
+        downloadItemStream: async () => {
+          const { Readable } = require('stream');
+          return Readable.from(Buffer.from('fake-audio-data'));
+        },
+      }),
+    });
+
+    // Suppress converter errors from console — we care only that sync doesn't throw
+    const origError = console.error;
+    console.error = vi.fn();
+
+    try {
+      const core = createTestSyncCore(validConfig, deps);
+      const itemTypes = new Map<string, ItemType>([['album-cover-ok', 'album']]);
+
+      // sync must not throw — cover art over limit is non-fatal
+      await expect(
+        core.sync(
+          { itemIds: ['album-cover-ok'], itemTypes, destinationPath: '/mnt/usb' },
+          () => {}
+        )
+      ).resolves.toBeDefined();
+    } finally {
+      console.error = origError;
+    }
+  });
+});
