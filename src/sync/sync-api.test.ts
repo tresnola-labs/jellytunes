@@ -164,4 +164,75 @@ describe('sync-api', () => {
       await expect(api.getCoverArt('cover-art-1')).rejects.toThrow()
     })
   })
+
+  describe('request() AbortController', () => {
+    it('cancels the request when timeout expires', async () => {
+      vi.useFakeTimers()
+      let signalGot: AbortSignal | undefined
+      const mockFetch = vi.fn().mockImplementation(async (_url: string, opts?: unknown) => {
+        signalGot = (opts as { signal?: AbortSignal })?.signal
+        while (!signalGot?.aborted) {
+          await vi.advanceTimersByTimeAsync(1)
+        }
+        const err = new Error('aborted'); err.name = 'AbortError'; throw err
+      })
+      const api = createApiClient({
+        baseUrl: 'https://jellyfin.example.com',
+        apiKey: 'test-key',
+        userId: 'user-1',
+        timeout: 100,
+        fetch: mockFetch,
+      })
+      const requestPromise = (api as unknown as { request<T>(ep: string): Promise<T> }).request('/test')
+      await vi.advanceTimersByTimeAsync(101)
+      let caught: unknown
+      try {
+        await requestPromise
+      } catch (e) {
+        caught = e
+      }
+      expect(caught).toMatchObject({ statusCode: 408 })
+      await vi.advanceTimersByTimeAsync(0)
+      mockFetch.mockRestore()
+      vi.useRealTimers()
+    })
+
+    it('does not throw or double-resolve when response arrives as timeout fires', async () => {
+      vi.useFakeTimers()
+      const mockFetch = vi.fn().mockImplementation(async (_url: string, opts?: unknown) => {
+        const signal = (opts as { signal?: AbortSignal })?.signal
+        await vi.advanceTimersByTimeAsync(99)
+        if (signal?.aborted) {
+          const err = new Error('aborted'); err.name = 'AbortError'; throw err
+        }
+        await vi.advanceTimersByTimeAsync(2)
+        if (signal?.aborted) {
+          const err = new Error('aborted'); err.name = 'AbortError'; throw err
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      })
+      const api = createApiClient({
+        baseUrl: 'https://jellyfin.example.com',
+        apiKey: 'test-key',
+        userId: 'user-1',
+        timeout: 100,
+        fetch: mockFetch,
+      })
+      const requestPromise = (api as unknown as { request<T>(ep: string): Promise<T> }).request('/test')
+      await vi.advanceTimersByTimeAsync(200)
+      let caught: unknown
+      try {
+        await requestPromise
+      } catch (e) {
+        caught = e
+      }
+      expect(caught).toMatchObject({ statusCode: 408 })
+      await vi.advanceTimersByTimeAsync(0)
+      mockFetch.mockRestore()
+      vi.useRealTimers()
+    })
+  })
 })
