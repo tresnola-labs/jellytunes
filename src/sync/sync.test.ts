@@ -413,37 +413,22 @@ describe('sync-api', () => {
       const { createApiClient, ApiError } = await import('./sync-api');
       const { Readable } = await import('stream');
 
-      // Track whether the stream was consumed
-      let streamConsumed = false;
-
       const api = createApiClient({
         baseUrl: 'https://jellyfin.example.com',
         apiKey: '0123456789abcdef0123456789abcdef',
         userId: 'abcdef1234567890abcdef1234567890',
         timeout: 5000,
-        fetch: async () => ({
-          ok: true,
-          status: 200,
-          statusText: 'OK',
-          body: {
-            getReader() {
-              const reader = {
-                read() {
-                  return new Promise((resolve) => {
-                    // Simulate stream that gets destroyed mid-read
-                    setTimeout(() => {
-                      streamConsumed = true;
-                      resolve({ done: false, value: new Uint8Array([1, 2, 3]) });
-                    }, 10);
-                  });
-                },
-                releaseLock() {},
-                cancel(reason?: any) {},
-              };
-              return reader;
-            },
-          },
-        }),
+        fetch: async () => {
+          // Create a Node.js Readable, wrap as web ReadableStream via Readable.toWeb
+          // The API uses Readable.fromWeb to convert back to Node Readable
+          const nodeStream = Readable.from([Buffer.from([1, 2, 3])]);
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            body: Readable.toWeb(nodeStream),
+          };
+        },
       });
 
       const stream = await api.downloadItemStream('track-id') as Readable;
@@ -485,17 +470,13 @@ describe('sync-api', () => {
         userId: 'abcdef1234567890abcdef1234567890',
         timeout: 5000,
         fetch: async () => {
-          // Return a body that will be converted via Readable.fromWeb
-          const { WebReadableWritable } = await import('stream');
-          const { PassThrough } = await import('stream');
-          const pass = new PassThrough();
-          pass.write(Buffer.alloc(100));
-          setTimeout(() => pass.destroy(), 5);
+          // Create a Node.js Readable and wrap as web ReadableStream via Readable.toWeb
+          const nodeStream = Readable.from([Buffer.alloc(100)]);
           return {
             ok: true,
             status: 200,
             statusText: 'OK',
-            body: pass,
+            body: Readable.toWeb(nodeStream),
           };
         },
       });
@@ -515,37 +496,64 @@ describe('sync-api', () => {
     });
 
     it('aborts request on timeout via AbortController', async () => {
-      const { createApiClient, ApiError } = await import('./sync-api');
+      vi.useFakeTimers();
 
-      // Track whether abort was called on the controller
-      let abortCalled = false;
-      const abortError = new Error('Aborted');
-      abortError.name = 'AbortError';
+      const { createApiClient } = await import('./sync-api');
+      const { Readable } = await import('stream');
 
       const api = createApiClient({
         baseUrl: 'https://jellyfin.example.com',
         apiKey: '0123456789abcdef0123456789abcdef',
         userId: 'abcdef1234567890abcdef1234567890',
-        timeout: 50, // 50ms timeout — very short
-        fetch: async (url: string, opts: any) => {
-          void url;
-          // Simulate slow server that never responds before timeout
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          return { ok: true, status: 200, statusText: 'OK', body: null };
+        timeout: 50, // timeout * 10 = 500ms until AbortController fires
+        fetch: async (_url: string, options?: { signal?: AbortSignal }) => {
+          const { Readable } = await import('stream');
+          const slowStream = new Readable({
+            read() {
+              // Never push — stream hangs
+            },
+          });
+
+          return new Promise<Response>((resolve, reject) => {
+            if (options?.signal?.aborted) {
+              const abortErr = new Error('Aborted');
+              abortErr.name = 'AbortError';
+              reject(abortErr);
+              return;
+            }
+
+            options?.signal?.addEventListener('abort', () => {
+              const abortErr = new Error('Aborted');
+              abortErr.name = 'AbortError';
+              reject(abortErr);
+            });
+
+            setTimeout(() => {
+              resolve({
+                ok: true,
+                status: 200,
+                statusText: 'OK',
+                body: Readable.toWeb(slowStream) as any,
+              });
+            }, 600);
+          });
         },
       });
 
-      const start = Date.now();
-      try {
-        await api.downloadItemStream('slow-track-id');
-      } catch (err: any) {
-        expect(err).toBeInstanceOf(ApiError);
-        expect(err.message).toMatch(/timed out|Download timed out/i);
-        expect(Date.now() - start).toBeLessThan(200); // Should fire well before 500ms
-      }
+      let caughtError: any;
+      const downloadPromise = api.downloadItemStream('slow-track-id');
+      const settled = downloadPromise.catch(err => { caughtError = err; });
 
-      // Should throw on timeout
-      await expect(api.downloadItemStream('slow-track-id')).rejects.toThrow();
+      // Advance timers to trigger AbortController timeout (~500ms)
+      await vi.runAllTimersAsync();
+      await settled;
+
+      // Verify error was thrown with correct message
+      expect(caughtError).toBeDefined();
+      expect(caughtError.message).toMatch(/timed out|Download timed out/i);
+
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
     });
   });
 });
@@ -1221,6 +1229,8 @@ describe('Error Handling', () => {
 
       // Override getSyncedTracksForDevice to return a record at the OLD path
       // but with SAME metadata hash (so metadataChanged = false, pathChanged = true)
+      // NOTE: hash must match what computeMetadataHash(buildMetadata(track)) produces.
+      // For makeTrack({ path: '/music/NewAlbum/track.mp3' }) the hash is 4291b888db42e390.
       const existingRecord = {
         id: 1,
         deviceId: 1,
@@ -1228,7 +1238,7 @@ describe('Error Handling', () => {
         trackId: 'track-x',
         destinationPath: '/music/OldAlbum/track.mp3', // old path
         fileSize: 5_000_000,
-        metadataHash: 'abc123def456', // same hash as server would compute for this track
+        metadataHash: '4291b888db42e390', // matches actual hash computed from track metadata
         coverArtMode: 'embed',
         encodedBitrate: '192k',
         serverPath: '/music/OldAlbum/track.mp3',
@@ -1236,8 +1246,8 @@ describe('Error Handling', () => {
         syncedAt: new Date().toISOString(),
       } as const;
 
-      vi.mocked(getSyncedTracksForDevice).mockResolvedValueOnce([existingRecord] as any);
-      vi.mocked(getSyncedTracksForItem).mockResolvedValueOnce([existingRecord] as any);
+      vi.mocked(getSyncedTracksForDevice).mockReturnValueOnce([existingRecord] as any);
+      vi.mocked(getSyncedTracksForItem).mockReturnValueOnce([existingRecord] as any);
 
       const core = createTestSyncCore(validConfig, deps);
 

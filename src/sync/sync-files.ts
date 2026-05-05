@@ -31,18 +31,26 @@ export function sanitizeNumericField(value: string): string {
 }
 
 /** FFmpeg protocol URI regex — these must be rejected as output paths */
-const FFMPEG_PROTOCOLS = /^(pipe:|concat:|http:|https:|rtmp:|ftp:|data:|cache:|async:|crypto:|subfile:|fd:|md5:|tee:)/i;
+const FFMPEG_PROTOCOLS = /^(pipe:|concat:|http:|https:|rtmp:|ftp:|data:|cache:|async:|crypto:|subfile:|fd:|md5:|tee:|file:)/i;
 
 /**
  * Assert that a path is a safe filesystem path (not a FFmpeg protocol URI or relative path).
  * Throws if the path could be interpreted as a FFmpeg special protocol or is not absolute.
  */
 export function assertFilesystemPath(p: string, label = 'output'): void {
+  if (!p || typeof p !== 'string') {
+    throw new Error(`${label} must be a non-empty string`);
+  }
   if (FFMPEG_PROTOCOLS.test(p)) {
     throw new Error(`Invalid ${label} path: FFmpeg protocol URIs are not allowed (got: ${p})`);
   }
   if (!path.isAbsolute(p)) {
     throw new Error(`Invalid ${label} path: must be absolute (got: ${p})`);
+  }
+  // Block path traversal
+  const segments = p.replace(/\/+/g, '/').split('/');
+  if (segments.some(s => s === '..')) {
+    throw new Error(`${label} must be a local filesystem path (received: "${p}")`);
   }
 }
 
@@ -736,38 +744,6 @@ export async function getUniqueFilename(
   }
 
   return finalName;
-}
-
-/**
- * Assert that a path is a safe filesystem path (no FFmpeg protocols, no traversal).
- * Used for defense-in-depth validation of paths before passing to FFmpeg.
- */
-function assertFilesystemPath(path: string, name: string): void {
-  if (!path || typeof path !== 'string') {
-    throw new Error(`${name} must be a non-empty string`);
-  }
-
-  // Block FFmpeg stdio protocols (pipe:0 = stdin, pipe:1 = stdout)
-  if (path.startsWith('pipe:')) {
-    throw new Error(`${name} must be a local filesystem path (received: "${path}")`);
-  }
-
-  // Block URL-like protocols (file://, http://, data:, etc.)
-  if (path.includes('://')) {
-    throw new Error(`${name} must be a local filesystem path (received: "${path}")`);
-  }
-
-  // Block single-colon protocol forms (file:, data:, http:, etc.)
-  // but NOT drive letters like C: (followed by \ or / or end)
-  if (/^[a-zA-Z]+:/.test(path) && !/^[a-zA-Z]:[/\\]/.test(path)) {
-    throw new Error(`${name} must be a local filesystem path (received: "${path}")`);
-  }
-
-  // Block path traversal
-  const segments = path.replace(/\/+/g, '/').split('/');
-  if (segments.some(s => s === '..')) {
-    throw new Error(`${name} must be a local filesystem path (received: "${path}")`);
-  }
 }
 
 /**

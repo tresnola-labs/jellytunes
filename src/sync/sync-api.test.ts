@@ -168,13 +168,18 @@ describe('sync-api', () => {
   describe('request() AbortController', () => {
     it('cancels the request when timeout expires', async () => {
       vi.useFakeTimers()
-      let signalGot: AbortSignal | undefined
+      let abortThrown = false
+      let abortError: Error | undefined
       const mockFetch = vi.fn().mockImplementation(async (_url: string, opts?: unknown) => {
-        signalGot = (opts as { signal?: AbortSignal })?.signal
-        while (!signalGot?.aborted) {
+        const signal = (opts as { signal?: AbortSignal })?.signal
+        while (!signal?.aborted && !abortThrown) {
           await vi.advanceTimersByTimeAsync(1)
         }
-        const err = new Error('aborted'); err.name = 'AbortError'; throw err
+        if (!abortThrown) {
+          abortThrown = true
+          abortError = new Error('aborted'); abortError.name = 'AbortError'
+          throw abortError
+        }
       })
       const api = createApiClient({
         baseUrl: 'https://jellyfin.example.com',
@@ -184,13 +189,10 @@ describe('sync-api', () => {
         fetch: mockFetch,
       })
       const requestPromise = (api as unknown as { request<T>(ep: string): Promise<T> }).request('/test')
-      await vi.advanceTimersByTimeAsync(101)
       let caught: unknown
-      try {
-        await requestPromise
-      } catch (e) {
-        caught = e
-      }
+      const settled = requestPromise.catch(e => { caught = e })
+      await vi.advanceTimersByTimeAsync(101)
+      await settled
       expect(caught).toMatchObject({ statusCode: 408 })
       await vi.advanceTimersByTimeAsync(0)
       mockFetch.mockRestore()
@@ -199,15 +201,21 @@ describe('sync-api', () => {
 
     it('does not throw or double-resolve when response arrives as timeout fires', async () => {
       vi.useFakeTimers()
+      let abortThrown = false
+      let abortError: Error | undefined
       const mockFetch = vi.fn().mockImplementation(async (_url: string, opts?: unknown) => {
         const signal = (opts as { signal?: AbortSignal })?.signal
         await vi.advanceTimersByTimeAsync(99)
-        if (signal?.aborted) {
-          const err = new Error('aborted'); err.name = 'AbortError'; throw err
+        if (signal?.aborted && !abortThrown) {
+          abortThrown = true
+          abortError = new Error('aborted'); abortError.name = 'AbortError'
+          throw abortError
         }
         await vi.advanceTimersByTimeAsync(2)
-        if (signal?.aborted) {
-          const err = new Error('aborted'); err.name = 'AbortError'; throw err
+        if (signal?.aborted && !abortThrown) {
+          abortThrown = true
+          abortError = new Error('aborted'); abortError.name = 'AbortError'
+          throw abortError
         }
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,
@@ -222,13 +230,10 @@ describe('sync-api', () => {
         fetch: mockFetch,
       })
       const requestPromise = (api as unknown as { request<T>(ep: string): Promise<T> }).request('/test')
-      await vi.advanceTimersByTimeAsync(200)
       let caught: unknown
-      try {
-        await requestPromise
-      } catch (e) {
-        caught = e
-      }
+      const settled = requestPromise.catch(e => { caught = e })
+      await vi.advanceTimersByTimeAsync(200)
+      await settled
       expect(caught).toMatchObject({ statusCode: 408 })
       await vi.advanceTimersByTimeAsync(0)
       mockFetch.mockRestore()

@@ -32,27 +32,27 @@ describe('assertFilesystemPath (via tagFile)', () => {
   describe('rejects FFmpeg protocol paths', () => {
     it('rejects pipe input protocol', async () => {
       await expect(converter.tagFile('pipe:0', '/tmp/output.mp3', validMeta))
-        .rejects.toThrow(/local filesystem path/);
+        .rejects.toThrow(/FFmpeg protocol URIs are not allowed/);
     });
 
     it('rejects file protocol with double slash', async () => {
       await expect(converter.tagFile('file:///tmp/input.mp3', '/tmp/output.mp3', validMeta))
-        .rejects.toThrow(/local filesystem path/);
+        .rejects.toThrow(/FFmpeg protocol URIs are not allowed/);
     });
 
     it('rejects data: protocol', async () => {
       await expect(converter.tagFile('data:image/png;base64,xxxx', '/tmp/output.mp3', validMeta))
-        .rejects.toThrow(/local filesystem path/);
+        .rejects.toThrow(/FFmpeg protocol URIs are not allowed/);
     });
 
     it('rejects http:// protocol', async () => {
       await expect(converter.tagFile('http://evil.com/input.mp3', '/tmp/output.mp3', validMeta))
-        .rejects.toThrow(/local filesystem path/);
+        .rejects.toThrow(/FFmpeg protocol URIs are not allowed/);
     });
 
     it('rejects output path with protocol too', async () => {
       await expect(converter.tagFile('/tmp/input.mp3', 'pipe:1', validMeta))
-        .rejects.toThrow(/local filesystem path/);
+        .rejects.toThrow(/FFmpeg protocol URIs are not allowed/);
     });
   });
 
@@ -75,6 +75,13 @@ describe('assertFilesystemPath (via tagFile)', () => {
     it('rejects empty string input path', async () => {
       await expect(converter.tagFile('', '/tmp/output.mp3', validMeta))
         .rejects.toThrow(/non-empty string/);
+    });
+  });
+
+  describe('rejects non-absolute paths', () => {
+    it('rejects relative input path', async () => {
+      await expect(converter.tagFile('relative/path.mp3', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/must be absolute/);
     });
   });
 });
