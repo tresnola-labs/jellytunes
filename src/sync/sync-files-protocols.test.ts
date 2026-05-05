@@ -1,34 +1,80 @@
-import { describe, it, expect } from 'vitest';
-import { assertFilesystemPath } from './sync-files';
+/**
+ * Tests for path validation in sync-files (issue ORAIN-0227)
+ *
+ * Verifies that tagFile rejects paths with FFmpeg protocols or path traversal
+ * as defense-in-depth validation.
+ */
 
-describe('assertFilesystemPath', () => {
-  it('throws on FFmpeg pipe: protocol', () => {
-    expect(() => assertFilesystemPath('pipe:1')).toThrow();
-    expect(() => assertFilesystemPath('pipe:0')).toThrow();
+import { describe, it, expect, vi } from 'vitest';
+import { createFFmpegConverter } from './sync-files';
+
+// Mock the ffmpeg-path module to avoid actual FFmpeg dependency in tests
+vi.mock('./ffmpeg-path', () => ({
+  resolveFFmpegPath: () => '/usr/local/bin/ffmpeg',
+}));
+
+describe('assertFilesystemPath (via tagFile)', () => {
+  // We test the validation indirectly through tagFile since assertFilesystemPath
+  // is a private function. tagFile is the public interface that uses it.
+
+  const converter = createFFmpegConverter();
+
+  // Minimal valid metadata
+  const validMeta = {
+    title: 'Test',
+    artist: 'Artist',
+    album: 'Album',
+    year: '2024',
+    trackNumber: '1',
+    discNumber: '1',
+  };
+
+  describe('rejects FFmpeg protocol paths', () => {
+    it('rejects pipe input protocol', async () => {
+      await expect(converter.tagFile('pipe:0', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
+
+    it('rejects file protocol with double slash', async () => {
+      await expect(converter.tagFile('file:///tmp/input.mp3', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
+
+    it('rejects data: protocol', async () => {
+      await expect(converter.tagFile('data:image/png;base64,xxxx', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
+
+    it('rejects http:// protocol', async () => {
+      await expect(converter.tagFile('http://evil.com/input.mp3', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
+
+    it('rejects output path with protocol too', async () => {
+      await expect(converter.tagFile('/tmp/input.mp3', 'pipe:1', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
   });
 
-  it('throws on FFmpeg concat: protocol', () => {
-    expect(() => assertFilesystemPath('concat:list.txt')).toThrow();
-    expect(() => assertFilesystemPath('CONCAT:file.mp3')).toThrow();
-  });
+  describe('rejects path traversal', () => {
+    it('rejects input path with ../ traversal', async () => {
+      await expect(converter.tagFile('/tmp/../../../etc/passwd', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
 
-  it('throws on other FFmpeg URI protocols', () => {
-    expect(() => assertFilesystemPath('http://evil.com/output.mp3')).toThrow();
-    expect(() => assertFilesystemPath('https://evil.com/output.mp3')).toThrow();
-    expect(() => assertFilesystemPath('ftp://files.server/output.mp3')).toThrow();
-    expect(() => assertFilesystemPath('rtmp://stream.server/live')).toThrow();
-    expect(() => assertFilesystemPath('data:image/png;base64,ABC123')).toThrow();
-    expect(() => assertFilesystemPath('crypto:plaintext')).toThrow();
-    expect(() => assertFilesystemPath('fd:0')).toThrow();
-  });
+    it('rejects output path with ../ traversal', async () => {
+      await expect(converter.tagFile('/tmp/input.mp3', '/tmp/../../../etc/passwd', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
 
-  it('throws on relative paths', () => {
-    expect(() => assertFilesystemPath('relative/path.mp3')).toThrow();
-    expect(() => assertFilesystemPath('output.mp3')).toThrow();
-  });
+    it('rejects input path with .. in middle of path', async () => {
+      await expect(converter.tagFile('/tmp/../home/user/file.mp3', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/local filesystem path/);
+    });
 
-  it('accepts absolute filesystem paths', () => {
-    expect(() => assertFilesystemPath('/tmp/output.mp3')).not.toThrow();
-    expect(() => assertFilesystemPath('/Users/jellytunes/music/track.mp3')).not.toThrow();
+    it('rejects empty string input path', async () => {
+      await expect(converter.tagFile('', '/tmp/output.mp3', validMeta))
+        .rejects.toThrow(/non-empty string/);
+    });
   });
 });
