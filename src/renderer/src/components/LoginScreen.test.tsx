@@ -16,7 +16,7 @@ const mockApi = {
   onSyncProgress: vi.fn().mockReturnValue(() => {}),
   getDeviceSyncInfo: vi.fn().mockResolvedValue(null),
   selectFolder: vi.fn().mockResolvedValue('/mnt/usb'),
-  saveSession: vi.fn().mockResolvedValue(undefined),
+  saveSession: vi.fn().mockResolvedValue({ success: true }),
   loadSession: vi.fn().mockResolvedValue(null),
   clearSession: vi.fn().mockResolvedValue(undefined),
 }
