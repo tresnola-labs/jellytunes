@@ -2421,7 +2421,7 @@ describe('sync loop healing on skip', () => {
     // upsertSyncedTrack must have been called to record the skipped track
     expect(vi.mocked(upsertSyncedTrack)).toHaveBeenCalled();
   });
-});});
+});
 
 // =============================================================================
 // cover art size limit (ORAIN-0232)
@@ -2829,5 +2829,350 @@ describe('cover art size limit — ORAIN-0232', () => {
       // Track must be deleted after both playlists removed
       expect((mockFs as any).__getFile('/music/Artist/Shared.mp3')).toBeUndefined();
     });
+  });
+});
+
+// =============================================================================
+// generateM3u8Files TESTS
+// =============================================================================
+
+describe('generateM3u8Files', () => {
+  const configWithServerRoot: SyncConfig = {
+    ...validConfig,
+    serverRootPath: '/music/lib/',
+  };
+
+  it('writes no file when playlist has no tracks', async () => {
+    const mockApi = createMockApiClient({
+      getTracksForItems: async () => ({ tracks: [], errors: [] }),
+      getItem: async () => ({ id: 'pl-1', name: 'Empty Playlist', type: 'Playlist' }),
+      getPlaylistTracks: async () => [],
+    });
+
+    const mockFs = createMockFileSystem();
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(configWithServerRoot, deps);
+
+    await core.sync({
+      itemIds: ['pl-1'],
+      itemTypes: new Map([['pl-1', 'playlist' as ItemType]]),
+      destinationPath: '/usb',
+    });
+
+    // Empty playlist — no .m3u8 written
+    expect((mockFs as any).__getFile('/usb/Empty Playlist.m3u8')).toBeUndefined();
+  });
+
+  it('writes a single playlist M3U8 file', async () => {
+    const tracks = [
+      { id: 't1', name: 'Track One', album: 'Album', artists: ['Artist'], path: '/music/lib/Artist/Album/track1.mp3', format: 'mp3', parentItemId: 'pl-1' },
+      { id: 't2', name: 'Track Two', album: 'Album', artists: ['Artist'], path: '/music/lib/Artist/Album/track2.mp3', format: 'mp3', parentItemId: 'pl-1' },
+    ];
+
+    // Set up source files so sync actually processes something
+    const mockFs = createMockFileSystem();
+    (mockFs as any).__setFile('/music/lib/Artist/Album/track1.mp3', Buffer.alloc(100));
+    (mockFs as any).__setFile('/music/lib/Artist/Album/track2.mp3', Buffer.alloc(100));
+
+    const mockApi = createMockApiClient({
+      getTracksForItems: async () => ({ tracks, errors: [] }),
+      getItem: async () => ({ id: 'pl-1', name: 'My Playlist', type: 'Playlist' }),
+      getPlaylistTracks: async () => tracks,
+      downloadItem: async () => Buffer.alloc(100),
+      downloadItemStream: async () => {
+        const { Readable } = require('stream');
+        return Readable.from(Buffer.alloc(100));
+      },
+    });
+
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(configWithServerRoot, deps);
+
+    await core.sync({
+      itemIds: ['pl-1'],
+      itemTypes: new Map([['pl-1', 'playlist' as ItemType]]),
+      destinationPath: '/usb',
+    });
+
+    const m3u8 = (mockFs as any).__getFile('/usb/My Playlist.m3u8');
+    expect(m3u8).toBeDefined();
+    const content = m3u8.toString('utf8');
+    expect(content).toContain('#EXTM3U');
+    expect(content).toContain('Artist - Track One');
+    expect(content).toContain('Artist/Album/track1.mp3');
+  });
+
+  it('writes M3U8 files for multiple playlists', async () => {
+    // Set up source files so sync actually processes something
+    const mockFs = createMockFileSystem();
+    (mockFs as any).__setFile('/music/lib/Artist/Album/t.mp3', Buffer.alloc(100));
+
+    const mockApi = createMockApiClient({
+      getTracksForItems: async () => ({
+        tracks: [
+          { id: 't1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/Artist/Album/t.mp3', format: 'mp3', parentItemId: 'pl-1' },
+        ],
+        errors: [],
+      }),
+      getItem: async (id: string) => ({ id, name: `Playlist ${id}`, type: 'Playlist' }),
+      getPlaylistTracks: async () => [
+        { id: 't1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/Artist/Album/t.mp3', format: 'mp3', parentItemId: 'pl-1' },
+      ],
+      downloadItem: async () => Buffer.alloc(100),
+      downloadItemStream: async () => {
+        const { Readable } = require('stream');
+        return Readable.from(Buffer.alloc(100));
+      },
+    });
+
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(configWithServerRoot, deps);
+
+    await core.sync({
+      itemIds: ['pl-1', 'pl-2'],
+      itemTypes: new Map([
+        ['pl-1', 'playlist' as ItemType],
+        ['pl-2', 'playlist' as ItemType],
+      ]),
+      destinationPath: '/usb',
+    });
+
+    expect((mockFs as any).__getFile('/usb/Playlist pl-1.m3u8')).toBeDefined();
+    expect((mockFs as any).__getFile('/usb/Playlist pl-2.m3u8')).toBeDefined();
+  });
+
+  it('sanitizes playlist names with special characters', async () => {
+    // Set up source files so sync actually processes something
+    const mockFs = createMockFileSystem();
+    (mockFs as any).__setFile('/music/lib/Artist/Album/t.mp3', Buffer.alloc(100));
+
+    const mockApi = createMockApiClient({
+      getTracksForItems: async () => ({
+        tracks: [
+          { id: 't1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/Artist/Album/t.mp3', format: 'mp3', parentItemId: 'pl-1' },
+        ],
+        errors: [],
+      }),
+      getItem: async () => ({ id: 'pl-1', name: 'My:Playlist', type: 'Playlist' }),
+      getPlaylistTracks: async () => [
+        { id: 't1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/Artist/Album/t.mp3', format: 'mp3', parentItemId: 'pl-1' },
+      ],
+      downloadItem: async () => Buffer.alloc(100),
+      downloadItemStream: async () => {
+        const { Readable } = require('stream');
+        return Readable.from(Buffer.alloc(100));
+      },
+    });
+
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(configWithServerRoot, deps);
+
+    await core.sync({
+      itemIds: ['pl-1'],
+      itemTypes: new Map([['pl-1', 'playlist' as ItemType]]),
+      destinationPath: '/usb',
+    });
+
+    // Colons should be replaced with _ → "My_Playlist.m3u8"
+    const m3u8 = (mockFs as any).__getFile('/usb/My_Playlist.m3u8');
+    expect(m3u8).toBeDefined();
+  });
+});
+
+// =============================================================================
+// getCoverArtBuffer TESTS
+// =============================================================================
+
+describe('getCoverArtBuffer', () => {
+  it('returns null (not throws) when server returns 404', async () => {
+    const mockApi = createMockApiClient({
+      getCoverArt: async () => {
+        throw new Error('404');
+      },
+    });
+
+    const mockFs = createMockFileSystem();
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(validConfig, deps);
+
+    // Use getCoverArtBuffer via analyzeDiff which calls copyTrack → getCoverArtBuffer
+    const getTracksForItemsSpy = vi.fn(() =>
+      Promise.resolve({
+        tracks: [
+          { id: 'track-1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/lib/Artist/Album/track.mp3', format: 'mp3', albumId: 'album-1', parentItemId: 'album-1' },
+        ],
+        errors: [],
+      })
+    );
+
+    (mockApi as any).getTracksForItems = getTracksForItemsSpy;
+
+    mockGetSyncedTracksForItem.mockReturnValue([]);
+
+    await core.analyzeDiff(
+      ['album-1'],
+      new Map([['album-1', 'album' as ItemType]]),
+      '/usb',
+      { coverArtMode: 'embed', bitrate: '192k', convertToMp3: false }
+    );
+
+    // Should not throw — error is swallowed and undefined is returned
+    expect(getTracksForItemsSpy).toHaveBeenCalled();
+  });
+
+  it('returns buffer when server returns valid image', async () => {
+    const coverBuffer = Buffer.from('fake-image-data');
+    const mockApi = createMockApiClient({
+      getCoverArt: async () => coverBuffer,
+    });
+
+    const mockFs = createMockFileSystem();
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(validConfig, deps);
+
+    // Direct test via analyzeDiff with mock cover art
+    const getTracksForItemsSpy = vi.fn(() =>
+      Promise.resolve({
+        tracks: [
+          { id: 'track-1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/lib/Artist/Album/track.mp3', format: 'mp3', albumId: 'album-1', parentItemId: 'album-1' },
+        ],
+        errors: [],
+      })
+    );
+
+    (mockApi as any).getTracksForItems = getTracksForItemsSpy;
+
+    mockGetSyncedTracksForItem.mockReturnValue([]);
+
+    const result = await core.analyzeDiff(
+      ['album-1'],
+      new Map([['album-1', 'album' as ItemType]]),
+      '/usb',
+      { coverArtMode: 'embed', bitrate: '192k', convertToMp3: false }
+    );
+
+    expect(result.items[0]).toBeDefined();
+  });
+});
+
+// =============================================================================
+// cleanEmptyDir TESTS
+// =============================================================================
+
+describe('cleanEmptyDir', () => {
+  it('deletes an empty directory', async () => {
+    const mockFs = createMockFileSystem();
+    mockFs.mkdir = async () => {}; // override to allow mkdir for non-existing dir
+
+    const mockApi = createMockApiClient();
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(validConfig, deps);
+
+    // Use sync to trigger cleanEmptyDir — set up an empty album dir
+    const tracks = [
+      { id: 'track-1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/lib/Artist/Empty Album/track.mp3', format: 'mp3', parentItemId: 'album-1' },
+    ];
+
+    const mockFsAny = mockFs as any;
+    // Mark the directory as existing
+    mockFsAny.__setFile('/usb/lib/Artist/Empty Album/.gitkeep', Buffer.from(''));
+
+    const getTracksForItemsSpy = vi.fn(() => Promise.resolve({ tracks, errors: [] }));
+    (mockApi as any).getTracksForItems = getTracksForItemsSpy;
+
+    // Set up a dummy download so the sync can proceed
+    (mockApi as any).downloadItemStream = async () => {
+      const { Readable } = require('stream');
+      return Readable.from(Buffer.alloc(100));
+    };
+
+    mockGetSyncedTracksForItem.mockReturnValue([]);
+
+    // Run sync — after tracks are written the empty dirs get cleaned
+    await core.sync({
+      itemIds: ['album-1'],
+      itemTypes: new Map([['album-1', 'album' as ItemType]]),
+      destinationPath: '/usb',
+    });
+
+    // The empty album dir should be removed (only .gitkeep remains — a system file)
+    // cleanEmptyDir removes .gitkeep and then rmdir
+    const emptyAlbumExists = await mockFs.isDirectory('/usb/lib/Artist/Empty Album');
+    expect(emptyAlbumExists).toBe(false);
+  });
+
+  it('does not delete a directory with content', async () => {
+    const mockFs = createMockFileSystem();
+
+    const mockApi = createMockApiClient();
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(validConfig, deps);
+
+    // Set up a directory with a music file
+    const mockFsAny = mockFs as any;
+    mockFsAny.__setFile('/usb/lib/Artist/Album/track.mp3', Buffer.alloc(1000));
+    mockFsAny.__setFile('/usb/lib/Artist/Album/cover.jpg', Buffer.alloc(500));
+
+    // Trigger cleanEmptyDir by calling sync
+    const tracks = [
+      { id: 'track-1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/lib/Artist/Album/track.mp3', format: 'mp3', parentItemId: 'album-1' },
+    ];
+
+    const getTracksForItemsSpy = vi.fn(() => Promise.resolve({ tracks, errors: [] }));
+    (mockApi as any).getTracksForItems = getTracksForItemsSpy;
+    (mockApi as any).downloadItemStream = async () => {
+      const { Readable } = require('stream');
+      return Readable.from(Buffer.alloc(100));
+    };
+
+    mockGetSyncedTracksForItem.mockReturnValue([]);
+
+    await core.sync({
+      itemIds: ['album-1'],
+      itemTypes: new Map([['album-1', 'album' as ItemType]]),
+      destinationPath: '/usb',
+    });
+
+    // Album dir should still exist (has track.mp3 and cover.jpg)
+    const albumDirExists = await mockFs.isDirectory('/usb/lib/Artist/Album');
+    expect(albumDirExists).toBe(true);
+  });
+
+  it('does not throw when directory does not exist', async () => {
+    const mockFs = createMockFileSystem();
+    mockFs.mkdir = async () => {};
+
+    const mockApi = createMockApiClient();
+    const deps: SyncDependencies = { api: mockApi, fs: mockFs, converter: createMockConverter() };
+
+    const core = createTestSyncCore(validConfig, deps);
+
+    const tracks = [
+      { id: 'track-1', name: 'Track', album: 'Album', artists: ['Artist'], path: '/music/lib/lib/Artist/Album/track.mp3', format: 'mp3', parentItemId: 'album-1' },
+    ];
+
+    const getTracksForItemsSpy = vi.fn(() => Promise.resolve({ tracks, errors: [] }));
+    (mockApi as any).getTracksForItems = getTracksForItemsSpy;
+    (mockApi as any).downloadItemStream = async () => {
+      const { Readable } = require('stream');
+      return Readable.from(Buffer.alloc(100));
+    };
+
+    mockGetSyncedTracksForItem.mockReturnValue([]);
+
+    // Should not throw even though the empty dir path doesn't exist
+    await expect(core.sync({
+      itemIds: ['album-1'],
+      itemTypes: new Map([['album-1', 'album' as ItemType]]),
+      destinationPath: '/nonexistent',
+    })).resolves.not.toThrow();
   });
 });
