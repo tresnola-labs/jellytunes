@@ -2421,7 +2421,7 @@ describe('sync loop healing on skip', () => {
     // upsertSyncedTrack must have been called to record the skipped track
     expect(vi.mocked(upsertSyncedTrack)).toHaveBeenCalled();
   });
-});
+});});
 
 // =============================================================================
 // cover art size limit (ORAIN-0232)
@@ -2565,5 +2565,269 @@ describe('cover art size limit — ORAIN-0232', () => {
     } finally {
       console.error = origError;
     }
+  });
+});describe('removeItems', () => {
+  // Stable config WITH serverRootPath so path computation works in tests
+  const configWithServerRoot: SyncConfig = {
+    serverUrl: 'https://jellyfin.example.com',
+    apiKey: '0123456789abcdef0123456789abcdef',
+    userId: 'abcdef1234567890abcdef1234567890',
+    serverRootPath: '/music/',
+  };
+
+  // ---------------------------------------------------------------------------
+  // Test: partial deletion — some items fail to delete, errors are reported
+  // but the rest continues successfully.
+  // ---------------------------------------------------------------------------
+  describe('partial deletion with errors reported', () => {
+    it('reports errors for failed deletions but continues with the rest', async () => {
+      // Track 1 will fail deletion (simulate permission error), track 2 succeeds
+      let track2Deleted = false;
+      const failingFs = {
+        ...createMockFileSystem(),
+        unlink: async (path: string) => {
+          if (path.includes('track-1')) throw new Error('Permission denied');
+          track2Deleted = true;
+        },
+      };
+
+      // Two tracks on disk: track-1.mp3 and track-2.mp3
+      (failingFs as any).__setFile('/music/Artist/Album/track-1.mp3', Buffer.alloc(100));
+      (failingFs as any).__setFile('/music/Artist/Album/track-2.mp3', Buffer.alloc(100));
+
+      const mockApi = createMockApiClient({
+        getTracksForItems: async () => ({
+          tracks: [
+            { id: 'track-1', name: 'Track One', path: '/music/Artist/Album/track-1.mp3', format: 'mp3', parentItemId: 'album-1' },
+            { id: 'track-2', name: 'Track Two', path: '/music/Artist/Album/track-2.mp3', format: 'mp3', parentItemId: 'album-1' },
+          ],
+          errors: [],
+        }),
+      });
+
+      const deps: SyncDependencies = {
+        api: mockApi,
+        fs: failingFs as any,
+        converter: createMockConverter(),
+      };
+
+      const core = createTestSyncCore(configWithServerRoot, deps);
+
+      const result = await core.removeItems(
+        ['album-1'],
+        new Map([['album-1', 'album' as ItemType]]),
+        '/music'
+      );
+
+      // track-2 should have been deleted successfully
+      expect(track2Deleted).toBe(true);
+      // Error for track-1 should be in the errors list
+      expect(result.errors.some(e => e.includes('track-1') || e.includes('Permission denied'))).toBe(true);
+      // At least one track should have been removed
+      expect(result.removed).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Test: cross-playlist — a track shared between two playlists must NOT be
+  // deleted when only one of the playlists is removed, because the other playlist
+  // still references it via its .m3u8 file.
+  // ---------------------------------------------------------------------------
+  describe('cross-playlist shared track protection', () => {
+    it('does not delete a track referenced by another playlist', async () => {
+      const mockFs = createMockFileSystem() as any;
+
+      // Two playlists: "Pop Hits" and "Rock Classics"
+      // Both contain the SAME track (track-shared.mp3)
+      // When removing "Pop Hits" playlist, track-shared.mp3 must NOT be deleted
+      // because "Rock Classics.m3u8" still references it.
+      // M3U8 stores relative paths as: getRelativePath(track.path, serverRootPath)
+      // track.path = '/music/Artist/Shared Track.mp3', serverRootPath = '/music/'
+      // → relative path = 'Artist/Shared Track.mp3'
+      mockFs.__setFile('/music/Pop Hits.m3u8', Buffer.from('#EXTM3U\n#EXTINF:-1,Shared Track\nArtist/Shared Track.mp3\n'));
+      mockFs.__setFile('/music/Rock Classics.m3u8', Buffer.from('#EXTM3U\n#EXTINF:-1,Shared Track\nArtist/Shared Track.mp3\n'));
+      mockFs.__setFile('/music/Artist/Shared Track.mp3', Buffer.alloc(5000000));
+
+      const mockApi = createMockApiClient({
+        getTracksForItems: async () => ({
+          tracks: [
+            { id: 'track-shared', name: 'Shared Track', artists: ['Artist'], path: '/music/Artist/Shared Track.mp3', format: 'mp3', parentItemId: 'playlist-pop-hits' },
+          ],
+          errors: [],
+        }),
+        getItem: async (id: string) => {
+          if (id === 'playlist-pop-hits') return { name: 'Pop Hits' };
+          return null;
+        },
+      });
+
+      const deps: SyncDependencies = {
+        api: mockApi,
+        fs: mockFs,
+        converter: createMockConverter(),
+      };
+
+      const core = createTestSyncCore(configWithServerRoot, deps);
+
+      const result = await core.removeItems(
+        ['playlist-pop-hits'],
+        new Map([['playlist-pop-hits', 'playlist' as ItemType]]),
+        '/music'
+      );
+
+      // Pop Hits.m3u8 should be deleted
+      expect((mockFs as any).__getFile('/music/Pop Hits.m3u8')).toBeUndefined();
+      // Rock Classics.m3u8 should remain
+      expect((mockFs as any).__getFile('/music/Rock Classics.m3u8')).toBeDefined();
+      // The shared track file should still exist (protected by Rock Classics.m3u8)
+      expect((mockFs as any).__getFile('/music/Artist/Shared Track.mp3')).toBeDefined();
+      // No errors expected since the track was correctly preserved
+      expect(result.errors).toHaveLength(0);
+      // removed counts audio files deleted; .m3u8 deletion is counted there
+      // (not M3U8 files which go through Step 1 without incrementing removed)
+      expect(result.removed).toBe(0); // track is protected by Rock Classics.m3u8
+    });
+
+    it('deletes a track when last referencing playlist is removed', async () => {
+      const mockFs = createMockFileSystem() as any;
+
+      // Only one playlist references the track
+      // relative path = getRelativePath('/music/Artist/Lone Track.mp3', '/music/') = 'Artist/Lone Track.mp3'
+      mockFs.__setFile('/music/Solo Playlist.m3u8', Buffer.from('#EXTM3U\n#EXTINF:-1,Lone Track\nArtist/Lone Track.mp3\n'));
+      mockFs.__setFile('/music/Artist/Lone Track.mp3', Buffer.alloc(5000000));
+
+      const mockApi = createMockApiClient({
+        getTracksForItems: async () => ({
+          tracks: [
+            { id: 'track-lone', name: 'Lone Track', artists: ['Artist'], path: '/music/Artist/Lone Track.mp3', format: 'mp3', parentItemId: 'playlist-solo' },
+          ],
+          errors: [],
+        }),
+        getItem: async () => ({ name: 'Solo Playlist' }),
+      });
+
+      const deps: SyncDependencies = {
+        api: mockApi,
+        fs: mockFs,
+        converter: createMockConverter(),
+      };
+
+      const core = createTestSyncCore(configWithServerRoot, deps);
+
+      const result = await core.removeItems(
+        ['playlist-solo'],
+        new Map([['playlist-solo', 'playlist' as ItemType]]),
+        '/music'
+      );
+
+      // M3U8 deleted
+      expect((mockFs as any).__getFile('/music/Solo Playlist.m3u8')).toBeUndefined();
+      // Track should be deleted too (no other playlist protects it)
+      expect((mockFs as any).__getFile('/music/Artist/Lone Track.mp3')).toBeUndefined();
+      // removed counts audio files deleted, not M3U8 files (which have no error counting)
+      expect(result.removed).toBe(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Test: race condition — two concurrent removeItems() calls on the same file
+  // should not leave inconsistent state (e.g. file deleted but counter off).
+  // The second call should gracefully handle the already-deleted file.
+  // ---------------------------------------------------------------------------
+  describe('concurrent calls do not cause inconsistent state', () => {
+    it('second concurrent call succeeds without errors even if file already deleted', async () => {
+      const mockFs = createMockFileSystem() as any;
+
+      // Set up: one playlist referencing one track
+      // relative path = 'Artist/Track.mp3'
+      mockFs.__setFile('/music/Test Playlist.m3u8', Buffer.from('#EXTM3U\n#EXTINF:-1,Track\nArtist/Track.mp3\n'));
+      mockFs.__setFile('/music/Artist/Track.mp3', Buffer.alloc(3000000));
+
+      let deleteCallCount = 0;
+      const trackingFs = {
+        ...mockFs,
+        unlink: async (path: string) => {
+          deleteCallCount++;
+          await mockFs.unlink(path);
+        },
+      };
+
+      const mockApi = createMockApiClient({
+        getTracksForItems: async () => ({
+          tracks: [
+            { id: 'track-1', name: 'Track', artists: ['Artist'], path: '/music/Artist/Track.mp3', format: 'mp3', parentItemId: 'playlist-1' },
+          ],
+          errors: [],
+        }),
+        getItem: async () => ({ name: 'Test Playlist' }),
+      });
+
+      const deps: SyncDependencies = {
+        api: mockApi,
+        fs: trackingFs as any,
+        converter: createMockConverter(),
+      };
+
+      const core = createTestSyncCore(configWithServerRoot, deps);
+
+      // Simulate two concurrent calls to removeItems for the same playlist
+      const [result1, result2] = await Promise.all([
+        core.removeItems(['playlist-1'], new Map([['playlist-1', 'playlist' as ItemType]]), '/music'),
+        core.removeItems(['playlist-1'], new Map([['playlist-1', 'playlist' as ItemType]]), '/music'),
+      ]);
+
+      // Both should succeed without errors (second call finds nothing to do)
+      expect(result1.errors).toHaveLength(0);
+      expect(result2.errors).toHaveLength(0);
+      // Track should be deleted only once
+      expect(deleteCallCount).toBeGreaterThanOrEqual(1);
+      // File should not exist
+      expect((mockFs as any).__getFile('/music/Artist/Track.mp3')).toBeUndefined();
+    });
+
+    it('concurrent removeItems on different playlists with shared track — track preserved until last playlist removed', async () => {
+      const mockFs = createMockFileSystem() as any;
+
+      // Track is in both playlists
+      // relative path = 'Artist/Shared.mp3'
+      mockFs.__setFile('/music/Playlist A.m3u8', Buffer.from('#EXTM3U\n#EXTINF:-1,Shared\nArtist/Shared.mp3\n'));
+      mockFs.__setFile('/music/Playlist B.m3u8', Buffer.from('#EXTM3U\n#EXTINF:-1,Shared\nArtist/Shared.mp3\n'));
+      mockFs.__setFile('/music/Artist/Shared.mp3', Buffer.alloc(5000000));
+
+      const mockApi = createMockApiClient({
+        getTracksForItems: async () => ({
+          tracks: [
+            { id: 'shared-track', name: 'Shared', artists: ['Artist'], path: '/music/Artist/Shared.mp3', format: 'mp3', parentItemId: 'playlist-a' },
+            { id: 'shared-track', name: 'Shared', artists: ['Artist'], path: '/music/Artist/Shared.mp3', format: 'mp3', parentItemId: 'playlist-b' },
+          ],
+          errors: [],
+        }),
+        getItem: async (id: string) => {
+          if (id === 'playlist-a') return { name: 'Playlist A' };
+          if (id === 'playlist-b') return { name: 'Playlist B' };
+          return null;
+        },
+      });
+
+      const deps: SyncDependencies = {
+        api: mockApi,
+        fs: mockFs as any,
+        converter: createMockConverter(),
+      };
+
+      const core = createTestSyncCore(configWithServerRoot, deps);
+
+      // Concurrently remove both playlists
+      const [resultA, resultB] = await Promise.all([
+        core.removeItems(['playlist-a'], new Map([['playlist-a', 'playlist' as ItemType]]), '/music'),
+        core.removeItems(['playlist-b'], new Map([['playlist-b', 'playlist' as ItemType]]), '/music'),
+      ]);
+
+      // Both should succeed
+      expect(resultA.errors).toHaveLength(0);
+      expect(resultB.errors).toHaveLength(0);
+      // Track must be deleted after both playlists removed
+      expect((mockFs as any).__getFile('/music/Artist/Shared.mp3')).toBeUndefined();
+    });
   });
 });
